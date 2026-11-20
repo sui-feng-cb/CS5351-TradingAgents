@@ -67,3 +67,25 @@ test fixture's delimiter restored the checks without weakening production logic.
   needs team review before feature PRs begin.
 - Report.md is an outline; student identities, reflections, contribution weights
   and five annotated session records must be completed by the actual team.
+
+## CI repair — BUG-001
+
+The published CI uses the `pytest` console entry point. The initialization result
+above was obtained with `python -m pytest`, which masked the missing repository
+root import path for `from scripts import check_governance`.
+
+Before repair, `.venv/bin/pytest -q test/offline/test_governance_gates.py`
+reproduced the collection error. The pytest configuration now explicitly declares
+`pythonpath = ["."]`, scoped to pytest and relative to the project root.
+
+| Repair check | Local result |
+|---|---|
+| `.venv/bin/pytest -q --disable-warnings` | 1415 passed, 1 skipped, 1 deselected; 100 subtests passed |
+| `.venv/bin/python -m pytest -q test/offline/test_governance_gates.py` | 3 passed |
+| `.venv/bin/python -m ruff check .` | Passed |
+| `.venv/bin/python -m mypy scripts/check_governance.py scripts/check_github_test_approvals.py` | Passed |
+| `.venv/bin/python scripts/check_governance.py` | Passed |
+
+The skip and deselection remain the optional Bedrock dependency and live DeepSeek
+test. The user subsequently authorized commit and push of this verified repair;
+no remote CI result has yet been claimed.

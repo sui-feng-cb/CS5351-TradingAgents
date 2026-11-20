@@ -68,6 +68,9 @@ default = true
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+# Repository governance scripts are not part of the installed src packages.
+# Make them importable with both `pytest` and `python -m pytest` entry points.
+pythonpath = ["."]
 addopts = "-ra --strict-markers -m \"not integration\""
 markers = [
     "unit: fast isolated unit tests",

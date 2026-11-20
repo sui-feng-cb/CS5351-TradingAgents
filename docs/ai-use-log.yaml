@@ -12,3 +12,15 @@ entries:
     transcript_status: native-json-snapshot-local-only-pending-final-tui-export-and-annotations
     validation: docs/verification/initialization.md
     feature_status: not-implemented
+  - id: FIX-001
+    scope: ci-pytest-import-path
+    agent: OpenCode
+    requirements: [BASE-01, QUA-01]
+    user_direction: Fix the reported CI tests import error without committing.
+    human_approval: user-approved-ci-repair-and-subsequent-commit-push
+    publication_direction: "User subsequently requested: commit然后推送."
+    files: [pyproject.toml, docs/bug-diary.md, docs/verification/initialization.md, docs/ai-use-log.yaml, .opencode/skills/pytest-entrypoint-imports/SKILL.md]
+    transcript: transcripts/raw/initialization-session.json
+    transcript_status: local-native-session-snapshot-pending-final-tui-export
+    validation: docs/verification/initialization.md
+    feature_status: application-features-unchanged
