@@ -221,3 +221,15 @@ __marimo__/
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise
 reports/
+
+# CS5351 local tooling, interpreters, evidence caches and runtime state
+.tools/
+.python/
+.cache/
+.runtime/
+.opencode/node_modules/
+.opencode/package.json
+.opencode/bun.lock*
+*.mp4
+# Complete native session backup stays local until transcript privacy review.
+/transcripts/raw/initialization-session.json

@@ -1,0 +1,150 @@
+schema_version: 1
+status: draft-awaiting-human-review
+source_documents:
+  - docs/reference/project-requirements.md
+  - docs/reference/module-acceptance.md
+requirements:
+  - id: FR-A
+    type: functional
+    owner: A
+    status: planned
+    statement: Analyze exactly two distinct tickers on one date and save a comparison report with per-ticker state, authoritative rating, summary and report link.
+    priority: Must
+    tradeoff: Sequential existing graph calls; no portfolio simulation.
+    source: project-requirements section 4
+    fit_criterion:
+      metric: approved comparison scenarios passed
+      threshold: 100%
+      verification: "test/offline/test_comparison.py (planned): normal, invalid and duplicate ticker, future date and failure cases"
+  - id: NFR-A
+    type: quality
+    owner: A
+    status: planned
+    statement: Preserve the successful ticker report whenever the other ticker fails.
+    priority: Must
+    tradeoff: Explicit partial results instead of whole-request failure.
+    source: project-requirements section 5
+    fit_criterion:
+      metric: successful report retention in both injected single-failure cases
+      threshold: 100%
+      verification: test/offline/test_comparison.py (planned)
+  - id: FR-B
+    type: functional
+    owner: B
+    status: planned
+    statement: Group common events for 2–3 tickers, at most 7 days and 5 records per ticker, using actual news text and at most one grouping model call; publish evidence-backed groups involving at least two tickers.
+    priority: Must
+    tradeoff: No heat score, impact ranking or prediction; ungrouped and unavailable records remain explicit.
+    source: project-requirements section 4; module-acceptance section 3
+    fit_criterion:
+      metric: pairwise semantic precision and recall plus schema and evidence checks
+      threshold: precision at least 0.80 and recall at least 0.70 on 20 or more human-reviewed pairs (at least 10 positive and 10 negative)
+      verification: "test/offline/test_events.py (planned); fixed real-model evaluation dataset and runner pending human review"
+  - id: NFR-B
+    type: quality
+    owner: B
+    status: planned
+    statement: All published evidence references resolve to this run and match their ticker and date metadata.
+    priority: Must
+    tradeoff: Discard unverified groups rather than infer citations.
+    source: project-requirements section 5
+    fit_criterion:
+      metric: valid reference rate and fabricated or cross-run references
+      threshold: 100% valid references and zero fabricated or cross-run references
+      verification: test/offline/test_events.py (planned), including forged IDs and mismatched metadata
+  - id: FR-C
+    type: functional
+    owner: C
+    status: planned
+    statement: Write a versioned run_manifest.json for successful and failed runs and provide read-only local ticker/date query with per-file warnings.
+    priority: Must
+    tradeoff: Only known configuration metadata; no guessed provider provenance.
+    source: project-requirements section 4
+    fit_criterion:
+      metric: approved manifest/query cases passed
+      threshold: 100%
+      verification: "test/offline/test_manifest.py (planned): malformed/unknown schemas, missing reports, filters and unsafe paths"
+  - id: NFR-C
+    type: performance
+    owner: C
+    status: planned
+    statement: Query 1000 synthetic manifests within the approved CI timing budget.
+    priority: Must
+    tradeoff: The 2-second threshold is proposed and requires human approval before feature implementation.
+    source: project-requirements section 5
+    fit_criterion:
+      metric: wall-clock seconds on a fixed CI runner
+      threshold: at most 2 seconds (proposed)
+      verification: versioned dataset generator and performance runner pending implementation
+  - id: FR-D
+    type: functional
+    owner: D
+    status: planned
+    statement: Publish REVIEW with reason codes if critical market evidence is missing, unavailable, not run or future-dated, or if the rating is invalid, regardless of model narrative.
+    priority: Must
+    tradeoff: Only approved critical evidence blocks; optional sources follow explicit degradation policy.
+    source: project-requirements section 4
+    fit_criterion:
+      metric: eligible and ineligible fixtures correctly reflected in structured result, CLI and report
+      threshold: 100%
+      verification: "test/offline/test_eligibility.py (planned): model Buy conflicts with unavailable evidence"
+  - id: NFR-D
+    type: security
+    owner: D
+    status: planned
+    statement: The deterministic eligibility boundary cannot be bypassed by model text or a secondary output adapter.
+    priority: Must
+    tradeoff: REVIEW replaces actionable output under uncertainty.
+    source: project-requirements section 5
+    fit_criterion:
+      metric: gate bypasses in approved negative fixtures
+      threshold: zero
+      verification: test/offline/test_eligibility.py (planned), safety-path PR review and ADR
+  - id: BASE-01
+    type: invariant
+    owner: team
+    status: baseline
+    statement: Preserve upstream imports, resource discovery and date/point-in-time safety semantics through layout migration.
+    priority: Must
+    tradeoff: Path adaptation only; upstream functionality is not counted as team implementation.
+    source: upstream 9fa1196fffbcfd9de5146d2dd2869df84ab99838
+    fit_criterion:
+      metric: upstream offline regression failures after migration
+      threshold: zero
+      verification: python -m pytest test/offline; package/import/resource smoke checks
+  - id: SEC-01
+    type: security
+    owner: team
+    status: draft
+    statement: Shared repository artifacts must exclude secrets and private account inputs.
+    priority: Must
+    tradeoff: Use synthetic fixtures and allowlisted metadata.
+    source: project-requirements section 6
+    fit_criterion:
+      metric: confirmed secret occurrences in submission artifacts
+      threshold: zero
+      verification: CI credential-pattern scan and human export/repository review
+  - id: GOV-01
+    type: governance
+    owner: D
+    status: draft
+    statement: Feature code requires prior human test/plan approval and an updated AI-use log.
+    priority: Must
+    tradeoff: Block unapproved feature changes; initialization does not fabricate approval.
+    source: project-requirements D3/D9 and CI gate requirements
+    fit_criterion:
+      metric: unapproved feature code merges
+      threshold: zero
+      verification: "scripts/check_governance.py --base BASE plus required GitHub reviews/branch protection (remote configuration pending)"
+  - id: QUA-01
+    type: quality
+    owner: team
+    status: draft
+    statement: Validate the requirement registry structure and reference integrity in CI.
+    priority: Must
+    tradeoff: Schema validation checks format, not implementation completion.
+    source: project-requirements D1
+    fit_criterion:
+      metric: schema and local reference validation errors
+      threshold: zero
+      verification: python scripts/check_governance.py

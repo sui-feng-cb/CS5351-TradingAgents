@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "source_documents", "requirements"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"type": "string", "minLength": 1},
+    "source_documents": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "requirements": {
+      "type": "array", "minItems": 8,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "type", "owner", "status", "statement", "priority", "tradeoff", "source", "fit_criterion"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+$"},
+          "type": {"enum": ["functional", "invariant", "quality", "performance", "cost", "governance", "security"]},
+          "owner": {"enum": ["A", "B", "C", "D", "team"]},
+          "status": {"enum": ["draft", "planned", "baseline", "implemented", "verified"]},
+          "statement": {"type": "string", "minLength": 10},
+          "priority": {"enum": ["Must", "Should", "Could", "Wont"]},
+          "tradeoff": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "fit_criterion": {
+            "type": "object", "additionalProperties": false,
+            "required": ["metric", "threshold", "verification"],
+            "properties": {
+              "metric": {"type": "string", "minLength": 1},
+              "threshold": {"type": "string", "minLength": 1},
+              "verification": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

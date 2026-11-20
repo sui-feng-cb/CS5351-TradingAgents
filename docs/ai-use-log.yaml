@@ -1,0 +1,14 @@
+schema_version: 1
+entries:
+  - id: INIT-001
+    scope: repository-initialization
+    agent: OpenCode
+    requirements: [BASE-01, GOV-01, QUA-01]
+    user_direction: Initialize repository and wait for final approval before commit/push.
+    human_approval: user-explicitly-approved-initialization-publication
+    publication_direction: "User message: 批准上传. Commit message: Chore: initialize CS5351-TradingAgents. Target: origin/main."
+    files: [pyproject.toml, src, test, docs, .opencode, scripts, .github]
+    transcript: transcripts/raw/initialization-session.json
+    transcript_status: native-json-snapshot-local-only-pending-final-tui-export-and-annotations
+    validation: docs/verification/initialization.md
+    feature_status: not-implemented

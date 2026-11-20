@@ -7,7 +7,7 @@ name = "tradingagents"
 dynamic = ["version"]
 description = "TradingAgents: Multi-Agents LLM Financial Trading Framework"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "cryptography>=42.0",
     "langchain-core>=1.6.5",
@@ -35,6 +35,11 @@ dev = [
     "ruff>=0.16",
     "pytest>=8.0",
     "pytest-subtests>=0.13",
+    "jsonschema>=4.0",
+    "mypy>=1.0",
+    "types-jsonschema",
+    "types-PyYAML",
+    "PyYAML>=6.0",
 ]
 # Amazon Bedrock support (AWS SigV4 auth + boto3). Optional so the core install
 # stays lean: pip install "tradingagents[bedrock]".
@@ -49,14 +54,20 @@ tradingagents = "cli.main:app"
 version = {attr = "tradingagents.__version__"}
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["tradingagents*", "cli*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
 tradingagents = ["assets/*.svg"]
 
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+default = true
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["test"]
 addopts = "-ra --strict-markers -m \"not integration\""
 markers = [
     "unit: fast isolated unit tests",
@@ -71,6 +82,11 @@ filterwarnings = [
 line-length = 100
 target-version = "py311"
 extend-exclude = ["results"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["scripts/check_governance.py"]
+strict = true
 
 [tool.ruff.lint]
 # Standard "good defaults" rule set (pyflakes + pycodestyle + isort + bugbear +
