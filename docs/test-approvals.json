@@ -1,5 +1,0 @@
-{
-  "schema_version": 1,
-  "approvals": [],
-  "note": "No feature test approval is fabricated. After a separately human-reviewed test PR and a subsequent registry PR are merged, record PR numbers, merged approval commit, human reviewer/time, requirement IDs, narrow implementation path patterns, test paths and frozen Git blob hashes."
-}

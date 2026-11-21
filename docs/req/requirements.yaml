@@ -128,14 +128,14 @@ requirements:
     type: governance
     owner: D
     status: draft
-    statement: Feature code requires prior human test/plan approval and an updated AI-use log.
+    statement: All module feature PRs require a prior independent plan/test review, an updated AI-use log, passing CI and independent review before merge.
     priority: Must
-    tradeoff: Block unapproved feature changes; initialization does not fabricate approval.
+    tradeoff: Use one feature branch and GitHub PR with native review evidence instead of a manually maintained approval registry.
     source: project-requirements D3/D9 and CI gate requirements
     fit_criterion:
       metric: unapproved feature code merges
       threshold: zero
-      verification: "scripts/check_governance.py --base BASE plus required GitHub reviews/branch protection (remote configuration pending)"
+      verification: "scripts/check_governance.py --base BASE; same-PR review check and required GitHub CI/reviews (remote settings to be verified)"
   - id: QUA-01
     type: quality
     owner: team
