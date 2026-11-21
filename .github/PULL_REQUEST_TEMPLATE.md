@@ -7,9 +7,13 @@
 
 ## Test plan approved before implementation
 
-- Test-only PR number (already merged):
-- Test approval registry PR number (already merged):
-- Frozen test paths / requirement IDs:
+- Same-PR test-plan review permalink and reviewed commit SHA:
+- Approved test paths, requirement IDs and positive/negative cases:
+- Baseline result for the representative failing case:
+
+Start the feature PR as a draft with tests and documentation. Before committing
+application code, ask an independent reviewer to submit a GitHub **Comment**
+review starting with `Test-Plan-Approved: <full SHA>` followed by their rationale.
 
 ## Human supervision
 
@@ -27,6 +31,6 @@
 
 ## Review
 
-- Independent reviewer:
+- Independent review of the final PR head:
 - Safety-critical change and ADR (if applicable):
 - Verdict: APPROVE / CHANGES REQUIRED / REJECT

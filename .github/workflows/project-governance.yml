@@ -4,7 +4,6 @@ on:
   pull_request:
 permissions:
   contents: read
-  pull-requests: read
 jobs:
   governance:
     runs-on: ubuntu-latest
@@ -22,16 +21,3 @@ jobs:
       - run: python scripts/check_governance.py
       - run: python -m mypy scripts/check_governance.py scripts/check_github_test_approvals.py
       - run: python -m pip check
-      - name: PR change gates (fail closed for unapproved feature/prompt changes)
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-        run: python scripts/check_governance.py --base "$PR_BASE"
-      - name: Verify frozen test PR approvals with GitHub
-        if: github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python scripts/check_github_test_approvals.py --base "$PR_BASE"

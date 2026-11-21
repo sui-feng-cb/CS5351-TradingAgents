@@ -24,3 +24,15 @@ entries:
     transcript_status: local-native-session-snapshot-pending-final-tui-export
     validation: docs/verification/initialization.md
     feature_status: application-features-unchanged
+  - id: GOV-FLOW-001
+    scope: github-flow-test-review-for-modules-a-through-d
+    agent: OpenCode
+    requirements: [GOV-01, QUA-01, FR-D, NFR-D]
+    user_direction: Use ordinary feature-branch GitHub Flow for every module, with no manual test approval registry.
+    human_approval: User approved D design choice 1, then confirmed execution of the shared workflow migration.
+    publication_direction: User applied the legacy registry cleanup and authorized a commit and push to origin/D without rerunning tests.
+    evidence_boundary: This is governance authorization; no D feature test approval or PR review has occurred in this session.
+    files: [scripts, test/offline/test_governance_gates.py, .github, docs/testing, docs/req/requirements.yaml, Report.md]
+    transcript_status: Active OpenCode session requires human TUI export and annotation.
+    validation: docs/verification/github-flow.md
+    feature_status: application-features-unchanged

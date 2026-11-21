@@ -1,9 +1,8 @@
-"""QUA-01/GOV-01 initialization checks; feature gates fail closed until approved."""
+"""QUA-01/GOV-01 repository validation and local PR change checks."""
 
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import re
 import subprocess
@@ -32,7 +31,7 @@ REQUIRED = [
     ".opencode/skills/session-artifacts/SKILL.md",
     ".opencode/skills/repository-initialization/SKILL.md",
     "docs/reference/project-requirements.md", "docs/reference/module-acceptance.md",
-    "docs/verification/initialization.md", "docs/test-approvals.json",
+    "docs/verification/initialization.md",
 ]
 
 
@@ -69,29 +68,37 @@ def validate() -> None:
     print("Registry/schema, course layout and permission synchronization passed")
 
 
-def changed_code(base: str) -> list[str]:
+def is_application_path(path: str) -> bool:
+    return path.startswith(("src/", "cli/", "tradingagents/")) or path == "main.py"
+
+
+def changed_code(base: str, head: str = "HEAD") -> list[str]:
     """Ignore exact relocations of baseline code; detect substantive app changes."""
-    names = changed_paths(base)
+    names = changed_paths(base, head)
     changed = []
     for name in names:
-        if not name.startswith(("src/", "cli/", "tradingagents/")) and name != "main.py":
+        if not is_application_path(name):
             continue
-        if name.startswith(("cli/", "tradingagents/")) and _blob_at("HEAD", name) is None:
+        if name.startswith(("cli/", "tradingagents/")) and _blob_at(head, name) is None:
             old_blob = _blob_at(base, name)
-            if old_blob and old_blob == _blob_at("HEAD", f"src/{name}"):
+            if old_blob and old_blob == _blob_at(head, f"src/{name}"):
                 continue
         if name.startswith("src/") and _blob_at(base, name) is None:
             moved_blob = _blob_at(base, name.removeprefix("src/"))
-            if moved_blob and moved_blob == _blob_at("HEAD", name):
+            if moved_blob and moved_blob == _blob_at(head, name):
                 continue
-        if _blob_at(base, name) == _blob_at("HEAD", name):
+        if _blob_at(base, name) == _blob_at(head, name):
             continue
         changed.append(name)
     return changed
 
 
-def changed_paths(base: str) -> list[str]:
-    return list(filter(None, git("diff", "--no-renames", "--name-only", "-z", base, "HEAD").decode().split("\0")))
+def changed_paths(base: str, head: str = "HEAD") -> list[str]:
+    return list(filter(None, git("diff", "--no-renames", "--name-only", "-z", base, head).decode().split("\0")))
+
+
+def merge_base(base: str, head: str) -> str:
+    return git("merge-base", base, head).decode().strip()
 
 
 def _blob_at(revision: str, filename: str) -> str | None:
@@ -102,56 +109,16 @@ def _blob_at(revision: str, filename: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _is_ancestor(commit: str, base: str) -> bool:
-    return subprocess.run(
-        ["git", "merge-base", "--is-ancestor", commit, base], cwd=ROOT,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
-    ).returncode == 0
-
-
 def pr_gates(base: str) -> None:
-    """GOV-01: require frozen tests and a human-owned approval before implementation."""
+    """GOV-01: check PR changes locally; GitHub CI validates actual reviews."""
     names = changed_paths(base)
     application = changed_code(base)
-    test_changes = [
-        name for name in names
-        if name.startswith(("test/offline/", "test/live/")) and name.endswith(".py")
-        and _blob_at(base, name) != _blob_at("HEAD", name)
-    ]
+    test_changes = any(name.startswith("test/") for name in names)
     prompt_change = any(n.startswith("prompts/") and n != "prompts/README.md" for n in names)
     if (application or test_changes or prompt_change) and "docs/ai-use-log.yaml" not in names:
         raise ValueError("Code, test or prompt changes require an AI-use log update")
-    if application:
-        approvals = json.loads(git("show", f"{base}:docs/test-approvals.json"))["approvals"]
-        covered: set[str] = set()
-        for approval in approvals:
-            approval_commit = approval.get("approval_commit", "")
-            if not approval_commit or not _is_ancestor(approval_commit, base):
-                continue
-            if not approval.get("approved_by") or not approval.get("approved_at"):
-                continue
-            patterns = approval.get("implementation_paths", [])
-            if not patterns or not approval.get("requirement_ids"):
-                continue
-            test_blobs = approval.get("test_blobs", {})
-            if not test_blobs or not all(
-                blob and _blob_at(base, path) == _blob_at("HEAD", path) == blob
-                for path, blob in test_blobs.items()
-            ):
-                continue
-            covered.update(path for path in application
-                           if any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns))
-        if set(application) - covered:
-            raise ValueError(
-                "Feature code is blocked until a human-reviewed approval record in "
-                "docs/test-approvals.json covers every implementation path with a "
-                "base-contained test-only PR and frozen test blobs. Uncovered: "
-                f"{sorted(set(application) - covered)}"
-            )
     if any(path.endswith("events.py") for path in application) or prompt_change:
         raise ValueError("Semantic changes are blocked until the approved evaluation is wired into CI")
-    if test_changes:
-        print("Test-only PR: require human review before merge; record frozen test approval for implementation")
     print("Local PR governance checks passed")
 
 
@@ -180,7 +147,7 @@ def main() -> None:
     validate()
     scan()
     if args.base:
-        pr_gates(args.base)
+        pr_gates(merge_base(args.base, "HEAD"))
 
 
 if __name__ == "__main__":

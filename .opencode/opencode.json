@@ -7,7 +7,7 @@
   "permission": {
     "*": "deny",
     "read": {"*": "deny", "AGENTS.md": "allow", "Prompt.md": "allow", "README.md": "allow", "Report.md": "allow", "architecture-blueprint.md": "allow", "LICENSE": "allow", "pyproject.toml": "allow", "requirements*.txt": "allow", "src/**": "allow", "test/**": "allow", "docs/**": "allow", "scripts/**": "allow", "prompts/**": "allow", "transcripts/**": "allow", ".github/**": "allow", ".opencode/**": "allow", ".agent/**": "allow", ".env*": "deny", ".env.example": "allow", ".env.enterprise.example": "allow"},
-    "edit": {"*": "deny", "src/**": "ask", "test/**": "ask", "docs/**": "ask", "scripts/**": "ask", "prompts/**": "ask", "transcripts/**": "ask", ".opencode/skills/**": "ask", "README.md": "ask", "Report.md": "ask", "pyproject.toml": "ask", ".github/**": "ask", ".opencode/rules.md": "deny", "docs/test-approvals.json": "deny"},
+    "edit": {"*": "deny", "src/**": "ask", "test/**": "ask", "docs/**": "ask", "scripts/**": "ask", "prompts/**": "ask", "transcripts/**": "ask", ".opencode/skills/**": "ask", "README.md": "ask", "Report.md": "ask", "pyproject.toml": "ask", ".github/**": "ask", ".opencode/rules.md": "deny"},
     "glob": "ask",
     "grep": "ask",
     "list": "ask",

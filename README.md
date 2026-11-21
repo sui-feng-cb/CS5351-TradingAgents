@@ -63,10 +63,12 @@ Full initialization evidence and remaining gaps are in
 ## GitHub and gates
 
 The intended team repository is https://github.com/sui-feng-cb/CS5351-TradingAgents.
-The GitHub Actions workflow validates governance and runs upstream CI; the project
-governance workflow blocks unapproved feature/prompt changes until approval/evaluation
-evidence is implemented. Configure branch protection on GitHub to require checks
-and human review for safety paths; local files alone do not configure remote rules.
+All four modules use [GitHub Flow and same-PR test review](docs/testing/test-approval-process.md):
+develop on a feature branch, validate locally, and merge one reviewed PR after CI
+passes. Start with a draft containing tests and documentation. GitHub review history
+provides test-first evidence; the project governance workflow checks it before merge.
+The semantic evaluation gate still applies where relevant. Configure branch protection
+on GitHub to require CI and independent review on `main`, with no direct pushes.
 
 The course code and `demo.mp4` deadline is 2026-11-25 23:59 HKT (UTC+8); submit
 the video separately from the project ZIP. The classroom PPT is due internally

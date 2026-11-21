@@ -3,6 +3,9 @@
 Every fit criterion has a test; every invariant has a violation-triggered failing
 test. New tests name requirement/invariant IDs. Feature tests must be approved
 before implementation. Keep expected outcomes independent of production logic.
+Modules A–D follow the same [GitHub Flow](../testing/test-approval-process.md):
+record test evidence on the draft PR before application code, run all offline
+tests locally and in CI, and require independent final review before merging.
 
 1. Structural: package/CLI imports, resource discovery, dependency/module boundary,
    permissions and requirement schema validation.
