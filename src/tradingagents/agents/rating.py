@@ -103,6 +103,44 @@ def parse_rating(text: str, default: str = RATING_REVIEW) -> str:
     return rating if rating is not None else default
 
 
+_TEAM_RATING_LINE_RE = re.compile(
+    r"\s*(?:(?:[-+*\u2022]|\d+[.)])\s+)?[\s*_#]*" + _OWN_QUALIFIER
+    + r"rating\b[\s*_]*[:\-\u2010-\u2015]\s*(?P<value>.*?)\s*",
+    re.IGNORECASE,
+)
+
+
+def parse_team_rating(text: str) -> str:
+    """Read exact model-owned rating fields for FR-D/ADR-002/INV-D.
+
+    Markdown wrappers are presentation only. Values are case-sensitive and must
+    occupy the entire field; consensus labels never supply a missing own rating.
+    Every own field must be valid and agree. Standard parse_rating is unchanged.
+    """
+    if not isinstance(text, str):
+        return RATING_REVIEW
+    own = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = _TEAM_RATING_LINE_RE.fullmatch(line)
+        if match is None:
+            continue
+        value = match.group("value")
+        for wrapper in ("**", "__", "*", "_", "`"):
+            if value.startswith(wrapper) and value.endswith(wrapper) and len(value) > 2 * len(wrapper):
+                value = value[len(wrapper):-len(wrapper)].strip()
+                break
+        if value not in RATINGS_5_TIER:
+            return RATING_REVIEW
+        own.append(value)
+    return own[0] if own and len(set(own)) == 1 else RATING_REVIEW
+
+
 def run_rating(final_state: dict) -> str:
     """A finished run's rating: the Portfolio Manager's own, else read from its decision.
 

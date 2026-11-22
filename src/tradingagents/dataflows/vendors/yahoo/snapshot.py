@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from math import isfinite
 from typing import Literal
 
 import pandas as pd
@@ -78,6 +79,14 @@ def read_verified_market_evidence(symbol: str, as_of_date: str) -> VerifiedMarke
     latest = pd.Timestamp(rows.iloc[-1]["Date"])
     if pd.isna(latest):
         raise NoMarketDataError(symbol, normalize_symbol(symbol), "latest row has no valid date")
+    # FR-D / ADR-002 / INV-D: a dated row alone cannot establish usable critical
+    # evidence. Infinities survive the upstream loader's dropna operation.
+    try:
+        finite_close = isfinite(float(rows.iloc[-1].get("Close")))
+    except (TypeError, ValueError, OverflowError):
+        finite_close = False
+    if not finite_close:
+        raise NoMarketDataError(symbol, normalize_symbol(symbol), "latest close is not finite")
     return VerifiedMarketEvidence(status="valid", snapshot_date=latest.strftime("%Y-%m-%d"))
 
 

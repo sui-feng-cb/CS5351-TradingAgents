@@ -2,6 +2,37 @@
 
 Status: initialization draft, not the completed D6 submission.
 
+## D PR #3: independent review and corrective verification — 2026-11-22
+
+The PR #3 review reproduced three INV-D failures at implementation head
+`a8d60b6` even though its existing suite passed 1470 tests: an infinite close
+was accepted as critical evidence, a free-text Strong Buy or missing own rating
+was replaced by a quoted consensus Buy, and the public graph stream exposed
+the Trader proposal before qualification. The first two scenarios published
+actionable ratings and pending decisions; the third leaked a transient proposal.
+The user requested code repairs, testing, staging and template PR text.
+
+Regressions were written before production changes and produced 34 failures and
+20 passes across graph/parser suites, including 28 absent-parser cases. The repair
+validates finite latest Close at the trusted team adapter, uses exact model-owned
+free-text rating fields in team mode while preserving standard heuristic parsing,
+and withholds public stream proposals until eligibility succeeds. A positive
+finite-price control and eligible stream-release assertion keep the repair from
+passing by rejecting or hiding every result. Existing negative assertions were
+retained and the original stream check was strengthened frame-by-frame. A
+separate SQLite test reproduced `Buy` on resume from a pre-fix checkpoint; a
+versioned team signature now forces evidence and candidate checks to run again.
+
+Both final full runs passed **1512 tests and 100 subtests**, with 1 optional AWS
+skip, 1 live-test deselection and 24 existing warnings; one run used the console
+pytest entry point in America/New_York. Ruff, governance, governance-script mypy,
+pip and correction diff checks passed. No prompt/model/runtime dependency was
+changed. This provides evidence for the concrete repairs, not a self-approval of
+the corrected PR. The original review conclusion remains CHANGES REQUIRED until
+re-review, and missing historical approval evidence has not been fabricated or
+bypassed. AI-use entry `D-ELIG-PR3-FIX-001`, the D verification log and separate
+correction-session annotations track the intervention and actual results.
+
 ## D implementation and verification update — 2026-11-22
 
 The user confirmed that the revised tests-only PR #2 was squash-merged into main

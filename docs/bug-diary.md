@@ -1,5 +1,29 @@
 # Significant bugs
 
+## BUG-D-003 — PR #3 found three qualification bypasses beyond the original suite
+
+- Requirements: FR-D, NFR-D, INV-D, BASE-01; ADR-002.
+- Review baseline: `a8d60b660251b83c886bbf00b30ddd75f83bf528`.
+- Evidence validity: `dropna` retains infinite Close values; an adapter using only
+  the row date marked them valid. Real-loader graph regressions with `+inf` and
+  `-inf` reproduced actionable Buy. The adapter now requires a finite critical
+  Close before valid metadata; finite-price control preserves the positive path.
+- Rating authority: the upstream free-text heuristic skipped invalid/missing own
+  ratings and accepted consensus Buy. Team mode now validates complete own fields
+  exactly; paired standard-mode tests preserve upstream heuristic behavior.
+- Publication: the public stream filtered PM candidates but forwarded Trader Buy
+  before qualification. Both values/task projections now withhold that proposal
+  until eligible completion; strengthened negative and positive stream tests
+  prevent the transient leak and an always-withhold implementation.
+- Recovery: a pre-fix SQLite checkpoint could resume at the gate with an old Buy
+  candidate and trusted-looking evidence. The new team signature forces fresh
+  qualification; the recovery regression reproduced Buy before the signature fix.
+- Tests were added before fixes. The initial graph/parser run reported 34 failed,
+  20 passed (28 failures were the absent exact parser). The first repaired D
+  subset passed 93 tests. After finite-price control and invalid-price adapter
+  coverage and the checkpoint regression, the full suite passed 1512 tests and 100 subtests. Details and final
+  static checks are recorded in the D verification log; re-review is pending.
+
 ## BUG-D-001 — secondary proposal and completion notice obscured REVIEW
 
 - Requirements: FR-D, NFR-D, INV-D; ADR-002.

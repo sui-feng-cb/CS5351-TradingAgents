@@ -152,6 +152,61 @@ review with the exact first line `Test-Plan-Approved: f4be027ebbc43c3226c63209b7
 The current GitHub PR has no submitted reviews, so this memo entry must not be
 used as a substitute for that human approval or represented as a GitHub approval.
 
+## PR #3 · D 模块决策资格门
+
+- 仓库与审查对象 [sui-feng-cb/CS5351-TradingAgents #3](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/3)
+- 审查人 OpenCode，2026-11-22
+- 基线 `main` / `b5e6663c790b244b099051aee46549e1a9e51069`
+- 审查提交 `D` / `a8d60b660251b83c886bbf00b30ddd75f83bf528`
+- 范围 FR-D、NFR-D、INV-D、BASE-01，覆盖行情证据、图与 CLI 输出、报告、状态日志及结算边界。
+
+### 架构与测试
+
+纯资格判断、显式 `team` 模式和复用现有 10 日时效政策均符合 ADR-002 的设计方向。`standard` 仍为默认模式，无新增运行时依赖。PR #2 的两份验收测试文件保持原样。现有负例主要覆盖状态与日期以及 Portfolio Manager 候选字段，下面三个离线场景补充了真实加载器、非结构化模型输出与公开图流的边界覆盖。
+
+### 审查发现
+
+1. **P1 — 无效收盘价可通过关键证据检查。** 用当天收盘价为 `+inf` 的模拟供应商响应走真实 `load_ohlcv`，`dropna` 保留了该值，快照适配器仅凭行日期返回 `valid`。完整团队模式运行输出权威 `Buy`，并产生 1 条待结算记录。请在生成有效证据状态前校验关键行情值，明确拒绝非有限收盘价，并补充从加载器到 `REVIEW`、待结算条目为零的回归用例。 [行情加载器](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/a8d60b660251b83c886bbf00b30ddd75f83bf528/src/tradingagents/dataflows/vendors/yahoo/ohlcv.py#L252) · [证据适配器](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/a8d60b660251b83c886bbf00b30ddd75f83bf528/src/tradingagents/dataflows/vendors/yahoo/snapshot.py#L78)
+2. **P1 — 自由文本回退把不合规评级转换成可交易评级。** 在行情有效、模型不支持结构化输出时，Portfolio Manager 首行给出 `Rating: Strong Buy`，后文引用 `Consensus rating: Buy`。上游启发式解析返回 `Buy`，资格门收到的已是合法值。离线运行发布 `Buy`，理由为空，并写入 1 条待结算记录。请保留 `standard` 的兼容解析，并让 `team` 校验模型自己的确切评级字段。缺失或不合规时应产生 `REVIEW` 和 `invalid_rating`，同时覆盖正文引用合法评级的负例。 [自由文本回退](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/a8d60b660251b83c886bbf00b30ddd75f83bf528/src/tradingagents/agents/managers/portfolio_manager.py#L85) · [团队候选节点](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/a8d60b660251b83c886bbf00b30ddd75f83bf528/src/tradingagents/graph/setup.py#L199)
+3. **P1 — 公开图流提前发出 Trader 的买入提案。** `stream_run()` 在团队模式中过滤了 Portfolio Manager 的候选键，但直接转发 `trader_investment_plan`。离线模拟证据不可用时，公开流在 `eligibility_checked=False` 的帧中发出 `**Action**: Buy`，最后一帧才返回 `REVIEW` 并清空该字段。直接订阅 Python 图流的调用方已经收到了可执行提案。请在图流边界暂扣该字段，只在资格通过后发布，并扩展现有图流测试逐帧检查。 [公开图流](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/a8d60b660251b83c886bbf00b30ddd75f83bf528/src/tradingagents/graph/trading_graph.py#L520)
+
+### 验证与交付记录
+
+- `gh pr checkout 3 --repo sui-feng-cb/CS5351-TradingAgents --detach` 拉取的提交与远端 PR head 一致。`gh pr checks 3 --repo sui-feng-cb/CS5351-TradingAgents` 显示 Python 3.13 测试、治理、全仓 Ruff、干净安装均通过。按本次委托，`same-PR reviews` 不计入代码审查结论。该检查的日志显示缺少实现前的独立测试评审记录。 [CI](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45018083314) · [评审检查日志](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45018083313/job/137194642929)
+- 本地 Python 3.13.18，`TZ=America/New_York .venv/bin/python -m pytest -q --tb=short` 得到 1470 passed、1 skipped、1 deselected、100 subtests passed。以 PR 基线运行 `scripts/check_governance.py --base` 通过，`ruff check .`、`mypy scripts/check_governance.py` 和 `pip check` 均通过。
+- 完整 PR 的 `git diff --check` 仅在原始 transcript 中报告行尾空白与文件末尾空行，排除 `transcripts/raw/` 后通过。发布记录可顺手把 PR 描述里的 `CS5531` 链接修正为实际仓库，并交叉链接已上传的原始会话与对应注释。 [PR #2](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/2)
+
+### 决定
+
+**CHANGES REQUIRED**。请修复上述三项 P1 并增加独立的离线回归覆盖。前两项会给出不应发布的权威评级并写入结算队列，第三项会在资格结果发布前暴露交易提案。
+
+## PR #3 implementation response — 2026-11-22
+
+This is the author's repair record requested by the user, not an independent
+re-review or a replacement verdict. The original CHANGES REQUIRED above remains
+the last review conclusion until the corrected head is reviewed.
+
+1. Finding 1: the team snapshot metadata adapter now rejects a nonfinite or
+   unusable latest Close. Regressions retain the real OHLCV loader, inject vendor
+   history with positive/negative infinity and assert REVIEW plus zero pending
+   entries. A finite-price control verifies that eligible Buy still succeeds.
+2. Finding 2: team PM free-text fallback now uses complete own-rating fields with
+   exact five-tier values; quoted consensus cannot replace a missing or invalid
+   own rating. Paired full-graph standard controls retain the upstream heuristic.
+3. Finding 3: public `stream_run` withholds Trader proposals in values/task states
+   until successful qualification. The original negative stream test is
+   strengthened frame-by-frame; a positive case requires release after the gate.
+
+The new regressions reproduced the findings before fixes. A separate SQLite
+regression also reproduced reuse of a pre-fix Buy candidate on resume; versioning
+the team checkpoint signature prevents that reuse. The current full local suite
+reports 1512 passed, 1 skipped, 1 deselected and 100 subtests passed; final
+commands/results and session references are in `docs/verification/d-eligibility.md`.
+The updated PR text uses the correct CS5351 repository URL. Existing raw exports
+are indexed separately from the current correction session, whose complete TUI
+export remains pending; no export or approval is fabricated. No remote review,
+PR edit, push or merge was performed by this correction task.
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:

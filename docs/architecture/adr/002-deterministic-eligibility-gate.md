@@ -49,6 +49,38 @@ candidate-only state keys until the gate writes public final fields. The CLI
 stream adapter withholds those candidate fields, and blocked reports omit the
 Trader's action proposal so it cannot appear as a secondary final call.
 
+### PR #3 review corrections
+
+Review of `a8d60b660251b83c886bbf00b30ddd75f83bf528` found three concrete INV-D
+bypasses despite the then-passing offline suite. The user requested corrections
+under the existing FR-D/NFR-D scope:
+
+- Before publishing valid team evidence, the snapshot adapter requires a finite
+  latest Close. `+inf`, `-inf`, NaN, missing and nonnumeric close values fail closed
+  as unavailable evidence, using the existing `market_evidence_unavailable`
+  reason. The production loader's standard-mode behavior and stale guard remain
+  unchanged. A dated row alone is insufficient evidence of a usable price.
+- Structured Portfolio Manager ratings retain their typed value. For free text,
+  team mode reads complete, model-owned rating fields and requires an exact
+  case-sensitive five-tier value after removing Markdown wrappers. Missing,
+  invalid or conflicting own fields return REVIEW, resulting in `invalid_rating`;
+  consensus quotations cannot supply the candidate. Standard mode retains the
+  upstream heuristic parser. Prompts and model selection are unchanged.
+- `stream_run` withholds `trader_investment_plan` in both top-level values and
+  nested task results until `eligibility_checked=True` and the result is eligible.
+  Completed rejected output clears the proposal; eligible output releases it.
+  PM candidate fields continue to be withheld. The raw compiled LangGraph and
+  private checkpoints remain internal execution surfaces, not the public stream
+  projection.
+- Version the team checkpoint signature so a pre-fix run cannot resume with
+  already-accepted evidence or a candidate produced by the old parser. Standard
+  checkpoint IDs remain unchanged.
+
+The additions strengthen the existing acceptance boundary without changing the
+rating vocabulary, 10-day freshness limit or reason ordering. Regression tests
+first reproduced the review failures; current results and the independent-review
+boundary are recorded in `docs/verification/d-eligibility.md`.
+
 ## Alternatives considered
 
 | Option | Assessment |

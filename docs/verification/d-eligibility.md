@@ -1,10 +1,92 @@
 # D eligibility-gate work log and verification evidence
 
 Status: D application code is implemented locally; full offline regression has
-passed. Remote CI, independent non-D safety review and integration review remain
-pending. Earlier sections below preserve the original tests-first evidence.
+passed. PR #3 review found three bypasses in the initial implementation; the
+corrections below pass local regression but await corrected-head CI and independent
+re-review. Earlier sections preserve the original implementation/tests-first evidence.
 
-## Implementation session — 2026-11-22
+## PR #3 correction session — 2026-11-22
+
+User direction: read the PR #3 findings already in `docs/review-memo.md`, repair
+code, test, stage and return manual commit/push commands and template PR text.
+Scope is FR-D/NFR-D/INV-D and standard-mode compatibility under ADR-002/BASE-01.
+No new independent approval, commit, push or remote PR mutation was requested.
+The initial worktree was `D...origin/D` at `a8d60b6`, with existing unstaged review
+memo/AI-use log updates and an untracked `pr3-eligibility-review` skill. Those real
+review artifacts were preserved and are included in the correction handoff.
+
+### Repair plan and results
+
+1. Write independent red regressions before production edits: use the real OHLCV
+   loader with a synthetic `Ticker.history`, inject nonfinite latest Close values
+   plus an older valid row, exercise free-text own rating versus consensus in
+   team/standard graph paths, and inspect every public stream frame.
+2. Reject unusable latest Close in the team metadata adapter before `valid`
+   evidence is emitted. Reuse `market_evidence_unavailable`; do not modify the
+   existing standard loader or relax its freshness/date behavior.
+3. Add team-only exact own-field parsing to the PM free-text fallback. Values
+   must be exact five-tier strings after Markdown wrappers; missing, conflicting
+   or invalid own fields yield REVIEW/invalid_rating. Preserve standard heuristic
+   parsing, typed structured output, model configuration and prompts.
+4. Apply a common public-state projection to values and nested task emissions.
+   Withhold Trader proposals until successful qualification, clear them on
+   rejection and continue stripping PM candidate keys. Test eligible release to
+   avoid accepting an always-withhold repair.
+5. Version the team checkpoint signature to prevent reuse of evidence and
+   candidates accepted under the pre-fix policy. Standard signatures stay stable.
+6. Run the focused suite, all offline regression, the alternate CI timezone and
+   repository checks, then synchronize D1–D9 artifacts and stage intended files.
+
+Before code edits, the graph/parser run reported **34 failed, 20 passed**:
+the existing negative stream case and five additional graph variants exposed
+real bypasses/early publication, while 28 cases failed because the proposed exact
+parser was absent. After corrections, the D-focused run reported **93 passed**.
+Finite-price positive control and five invalid-price adapter cases were then
+added. A separate SQLite checkpoint regression reproduced `Buy` on resume before
+the signature change; it passes as part of the final full runs below.
+
+| Command | Actual result |
+|---|---|
+| `.venv/bin/python -m pytest test/offline/test_graph_end_to_end.py test/offline/test_team_rating.py -q --tb=short --disable-warnings` before production repairs | 34 failed, 20 passed; independently reproduced review findings. |
+| `.venv/bin/python -m pytest test/offline/test_graph_end_to_end.py test/offline/test_team_rating.py test/offline/test_eligibility.py test/offline/test_eligibility_adapter.py -q --tb=short --disable-warnings` after initial repairs | 93 passed. |
+| `.venv/bin/python -m pytest test/offline/test_graph_end_to_end.py::test_team_run_does_not_resume_a_pre_fix_portfolio_candidate -q --tb=short` before signature change | 1 failed; old checkpoint published Buy. |
+| `.venv/bin/python -m pytest -q --tb=short --disable-warnings` on final code/tests | **1512 passed, 1 skipped, 1 deselected, 100 subtests passed**, 24 warnings; 12.55s. |
+| `TZ=America/New_York .venv/bin/pytest -q --tb=short --disable-warnings` | Same counts; 12.56s. |
+| `.venv/bin/python -m ruff check .` | Passed. |
+| `.venv/bin/python scripts/check_governance.py --base main` | Passed schema/layout/permission synchronization, basic credential scan and committed-ref checks; does not validate a new GitHub approval or staged feature diff. |
+| `.venv/bin/python -m mypy scripts/check_governance.py` | Passed; scope is the governance script. |
+| `.venv/bin/python -m pip check` | Passed. |
+| `git diff --check` | Passed for the correction worktree; existing raw exports were not edited. |
+
+The optional `langchain_aws` dependency is absent and one live test is deselected.
+Tests use scripted models and synthetic vendor history; no live provider call or
+runtime dependency was added. The original `test_eligibility.py` is unchanged.
+`test_graph_end_to_end.py` now strengthens the original rejected-stream case and
+adds full graph regressions. No existing assertion was weakened or removed.
+
+### D1–D9 correction ledger
+
+| Deliverable | Actual update / boundary |
+|---|---|
+| D1 | Requirements retain existing rating vocabulary, freshness bound and reason semantics; test references include exact-own-rating and invalid-price regressions. |
+| D2 | ADR-002, interface, runtime policy and trace matrix state finite-close validation, exact team free-text parsing and stream qualification. |
+| D3 | Existing constraints are followed; no permission, CI gate or human-owned rule was relaxed. |
+| D4 | This red/green log, BUG-D-003 and strengthened graph/adapter tests plus new literal `test_team_rating.py`; original review verdict preserved with a separate implementation response. |
+| D5 | `transcripts/annotations/pr3-eligibility-fixes-2026-11-22.md` records the actual user direction. Prior exports exist under `transcripts/raw/`; no specific export is attributed to this active correction without evidence. Complete current TUI `/export` remains a user follow-up. |
+| D6 | `Report.md` explains how independent review found failures despite 1470 prior passing tests and how additional expectations corrected them. |
+| D7 | AI-use record `D-ELIG-PR3-FIX-001`, preserved REVIEW-PR3-001 and reusable correction skill; PR text follows `.github/PULL_REQUEST_TEMPLATE.md` and uses correct repository links. |
+| D8 | Four production files updated, graph and adapter regressions extended, exact-rating regression file added; no runtime dependency or prompt/model change. |
+| D9 | Review-driven scope and tests-before-code red run recorded; independent corrected-head review and genuine approval evidence remain required. |
+
+Current local results address the three concrete P1 reproductions. They do not
+change the reviewer's verdict, certify all possible inputs, or repair the missing
+pre-implementation independent-review evidence described by the original review.
+The same-PR review validator is unchanged. The correction handoff stages 23
+intended files on `D`, including the existing local review artifacts;
+`git diff --cached --check` passed, with no unstaged changes. Commit/push
+commands are provided for manual execution only.
+
+## Historical implementation session — 2026-11-22
 
 The user confirmed PR #2 was squash-merged, main/D were updated, and the latest
 D commit contained the prior review/session/skill artifacts. Those facts were

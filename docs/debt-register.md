@@ -8,6 +8,7 @@
 | DEBT-04 | Human/context | Team identity, contributions and transcripts pending | all members, no fabricated placeholders |
 | DEBT-D-01 | Governance/context | AGENTS.md still has obsolete pre-feature status because its edit was denied; active-session full export unavailable through tools | user refresh entrypoint status and use TUI /export; do not bypass permissions or invent export |
 | DEBT-D-02 | Integration/process | D's acceptance tests were merged in PR #2 before the implementation PR, while the existing validator expects same-PR test-review history | team account for genuine approval evidence in the future PR; no validator relaxation or fabricated review in this session |
+| DEBT-D-03 | Guardrail/evaluation | PR #3 exposed finite-price, own-rating and transient stream gaps despite a green original suite; corrections and 42 added cases (including checkpoint recovery) now pass locally | non-D reviewer recheck corrected head and require remote CI; do not infer universal safety from local counts |
 
 Track prompt rot, hallucinated/hidden dependencies, hard-to-change code, agent bloat,
 evaluation, guardrail and cognitive debt with concrete symptoms and review triggers.

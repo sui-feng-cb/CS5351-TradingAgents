@@ -176,10 +176,10 @@ class TradingAgentsGraph:
             "memory=parallel",
             f"settings={digest}",
         ]
-        # Keep existing standard-mode checkpoint IDs stable; team-mode state has
-        # an additional evidence/gate path and must never resume a standard run.
+        # INV-D / ADR-002: pre-fix team checkpoints may already contain evidence
+        # or candidates accepted by the old rules. Standard checkpoint IDs stay stable.
         if getattr(self, "decision_mode", "standard") == "team":
-            signature_parts.append("decision_mode=team")
+            signature_parts.extend(("decision_mode=team", "eligibility=v2"))
         return "|".join(signature_parts)
 
     def propagate(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
@@ -497,6 +497,23 @@ class TradingAgentsGraph:
 
         return final_state, run_rating(final_state)
 
+    def _public_stream_state(self, state):
+        """Withhold team candidate/action fields until qualification (NFR-D, ADR-002, INV-D)."""
+        if getattr(self, "decision_mode", "standard") != "team":
+            return state
+        public = dict(state)
+        public.pop("candidate_final_rating", None)
+        public.pop("candidate_final_trade_decision", None)
+        if not (
+            state.get("eligibility_checked") is True
+            and state.get("eligibility_status") == "eligible"
+        ):
+            public.pop("trader_investment_plan", None)
+            # A completed rejection must also clear any caller-accumulated value.
+            if state.get("eligibility_checked") is True:
+                public["trader_investment_plan"] = ""
+        return public
+
     def stream_run(self, graph_input, **args):
         """Stream a run as ``(messages, state)`` pairs.
 
@@ -521,17 +538,11 @@ class TradingAgentsGraph:
                     result = chunk.get("result") if mode == "tasks" else None
                     if isinstance(result, dict):
                         report = {k: v for k, v in result.items() if k != "messages" and v}
-                        if getattr(self, "decision_mode", "standard") == "team":
-                            report.pop("candidate_final_rating", None)
-                            report.pop("candidate_final_trade_decision", None)
+                        report = self._public_stream_state(report)
                         if result.get("messages") or report:
                             yield result.get("messages", []), report or None
                 elif mode == "values":
-                    public_chunk = chunk
-                    if getattr(self, "decision_mode", "standard") == "team":
-                        public_chunk = dict(chunk)
-                        public_chunk.pop("candidate_final_rating", None)
-                        public_chunk.pop("candidate_final_trade_decision", None)
+                    public_chunk = self._public_stream_state(chunk)
                     yield chunk.get("messages", []), public_chunk
         finally:
             context.run(stream.close)

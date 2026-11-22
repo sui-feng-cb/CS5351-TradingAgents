@@ -244,6 +244,10 @@ def test_team_mode_stream_never_publishes_buy_before_gate_replaces_it_with_revie
         graph.checkpoint_input(initial), **graph.propagator.get_graph_args()
     ):
         assert all(model_buy not in str(message.content) for message in messages)
+        if state:
+            assert not state.get("trader_investment_plan")
+            assert "candidate_final_rating" not in state
+            assert "candidate_final_trade_decision" not in state
         if state and (state.get("final_rating") or state.get("final_trade_decision")):
             assert state["final_rating"] == "REVIEW"
             assert "REVIEW" in state["final_trade_decision"]
@@ -252,6 +256,124 @@ def test_team_mode_stream_never_publishes_buy_before_gate_replaces_it_with_revie
             decisions.append(state["final_rating"])
 
     assert decisions
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("close, expected", [
+    pytest.param(float("inf"), "REVIEW", id="positive-inf"),
+    pytest.param(float("-inf"), "REVIEW", id="negative-inf"),
+    pytest.param(100.5, "Buy", id="finite-control"),
+])
+def test_team_gate_validates_close_through_real_loader(
+    tmp_path, monkeypatch, offline, model_buy, close, expected,
+):
+    """FR-D/NFR-D/INV-D: actual loader rows with invalid prices cannot authorize Buy."""
+    from tradingagents.dataflows.vendors.yahoo import ohlcv
+
+    class VendorTicker:
+        info = {"longName": "NVIDIA"}
+
+        def history(self, **_kwargs):
+            return pd.DataFrame({
+                "Open": [100.0, 100.0], "High": [101.0, 101.0], "Low": [99.0, 99.0],
+                "Close": [100.5, close], "Volume": [1000, 1000],
+            }, index=pd.DatetimeIndex(["2026-01-08", TRADE_DATE], name="Date"))
+
+    monkeypatch.setattr(ohlcv.yf, "Ticker", lambda _symbol: VendorTicker())
+    monkeypatch.setattr(snapshot, "load_ohlcv", ohlcv.load_ohlcv)
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(structured=True), decision_mode="team")
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == state["final_rating"] == expected
+    if expected == "REVIEW":
+        assert state["market_evidence_status"] == "unavailable"
+        assert "market_evidence_unavailable" in state["eligibility_reason_codes"]
+        assert "Buy" not in state["final_trade_decision"]
+        assert graph.memory_log.get_pending_entries() == []
+    else:
+        assert state["market_evidence_status"] == "valid"
+        assert state["snapshot_date"] == TRADE_DATE
+        assert state["eligibility_reason_codes"] == []
+        assert [entry["rating"] for entry in graph.memory_log.get_pending_entries()] == ["Buy"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("own_rating", ["Rating: Strong Buy", "No own rating was supplied."])
+@pytest.mark.parametrize("mode, expected", [("team", "REVIEW"), ("standard", "Buy")])
+def test_free_text_own_rating_cannot_be_replaced_by_consensus(
+    tmp_path, monkeypatch, offline, own_rating, mode, expected,
+):
+    """FR-D/NFR-D/BASE-01: team fails closed; standard retains heuristic parsing."""
+    monkeypatch.setitem(globals(), "TEXT", f"{own_rating}\n\nConsensus rating: Buy")
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(), decision_mode=mode)
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == state["final_rating"] == expected
+    if mode == "team":
+        assert state["market_evidence_status"] == "valid"
+        assert state["eligibility_reason_codes"] == ["invalid_rating"]
+        assert "Buy" not in state["final_trade_decision"]
+        assert graph.memory_log.get_pending_entries() == []
+    else:
+        assert [entry["rating"] for entry in graph.memory_log.get_pending_entries()] == ["Buy"]
+
+
+@pytest.mark.unit
+def test_team_stream_releases_trader_proposal_only_after_positive_qualification(
+    tmp_path, monkeypatch, offline,
+):
+    """FR-D/INV-D: withholding must still release an eligible proposal after the gate."""
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(structured=True), decision_mode="team")
+    published = []
+    for _messages, state in graph.stream_run(
+        graph.create_run_state("NVDA", TRADE_DATE), **graph.propagator.get_graph_args()
+    ):
+        if state and state.get("trader_investment_plan"):
+            assert state["eligibility_checked"] is True
+            assert state["eligibility_status"] == "eligible"
+            assert state["final_rating"] == "Overweight"
+            published.append(state["trader_investment_plan"])
+    assert published
+
+
+@pytest.mark.unit
+def test_team_run_does_not_resume_a_pre_fix_portfolio_candidate(tmp_path, monkeypatch, offline):
+    """NFR-D/INV-D: recovery cannot skip the corrected evidence and rating checks."""
+    from tradingagents.dataflows.errors import VendorUnavailableError
+    from tradingagents.graph.checkpointer import get_checkpointer, thread_id
+
+    standard = _graph(tmp_path, monkeypatch, ScriptedModel(structured=True), checkpoint_enabled=True)
+    # The reviewed version appended only this mode marker to the standard signature.
+    legacy_signature = standard._run_signature("stock") + "|decision_mode=team"
+    graph = _graph(
+        tmp_path, monkeypatch, ScriptedModel(structured=True), checkpoint_enabled=True, decision_mode="team",
+    )
+    legacy_config = {"configurable": {"thread_id": thread_id("NVDA", TRADE_DATE, legacy_signature)}}
+    with get_checkpointer(graph.config["data_cache_dir"], "NVDA") as saver:
+        old_graph = graph.workflow.compile(checkpointer=saver)
+        old_graph.update_state(legacy_config, {
+            **graph.create_run_state("NVDA", TRADE_DATE),
+            "market_analyst_status": "completed",
+            "market_evidence_status": "valid",
+            "snapshot_date": TRADE_DATE,
+            "investment_plan": "Earlier research plan.",
+            "trader_investment_plan": "**Action**: Buy",
+            "candidate_final_rating": "Buy",
+            "candidate_final_trade_decision": "Rating: Buy",
+        }, as_node="Portfolio Manager")
+        assert old_graph.get_state(legacy_config).next == ("Eligibility Gate",)
+
+    def unavailable(*_args, **_kwargs):
+        raise VendorUnavailableError("synthetic offline failure")
+
+    monkeypatch.setattr(snapshot, "load_ohlcv", unavailable)
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == state["final_rating"] == "REVIEW"
+    assert state["eligibility_reason_codes"] == ["market_evidence_unavailable"]
+    assert graph.memory_log.get_pending_entries() == []
 
 
 @pytest.mark.unit

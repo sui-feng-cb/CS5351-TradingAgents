@@ -144,3 +144,29 @@ upstream CLI exact-flags fixtures retain their old assertions and add only the
 new literal default mode. Current commands/results and remaining reviews are in
 `docs/verification/d-eligibility.md`; no historical red result is presented as
 current passing evidence.
+
+## PR #3 regression extension
+
+The user requested repairs of the three P1 findings in `docs/review-memo.md`.
+The regression additions implement the existing FR-D/NFR-D/INV-D expectations;
+they do not change allowed ratings, freshness thresholds or reason order. They
+were written and run before production corrections. No new independent GitHub
+test-plan approval is claimed for this local revision.
+
+| Case | Independent expectation |
+|---|---|
+| Real OHLCV loader with latest `+inf` or `-inf` Close, older valid row and model Buy | Team REVIEW, evidence unavailable, no Buy final decision, zero pending entries |
+| Same real-loader setup with finite Close | Buy permitted with actual snapshot date and one normal pending entry |
+| Adapter receives nonfinite, missing or nonnumeric latest Close | Reject with NoMarketDataError before emitting valid metadata |
+| Free-text PM says Strong Buy or omits own rating while consensus says Buy | Team REVIEW with exactly invalid_rating and zero pending entries; standard retains its heuristic Buy |
+| Every rejected team stream frame | No Trader proposal or internal PM candidate keys escape |
+| Eligible team stream | Trader proposal appears only after eligibility_checked=True and eligible status |
+| SQLite checkpoint created with pre-fix team signature and a staged Buy | Start fresh; unavailable evidence produces REVIEW and zero pending entries |
+| Five exact own ratings in plain/list/heading Markdown plus consensus quotation | Preserve the exact own value |
+| Lowercase/uppercase/extra prose, missing or conflicting own fields, quote-only rating and scale legend | REVIEW, even with consensus Buy |
+
+`test_eligibility.py` remains unchanged. `test_graph_end_to_end.py` strengthens
+the existing rejected-stream assertion and adds production-path regressions.
+`test_eligibility_adapter.py` adds invalid-price cases; `test_team_rating.py`
+contains literal parser expectations. Historical descriptions above that those
+files were unchanged apply only to the original implementation session.

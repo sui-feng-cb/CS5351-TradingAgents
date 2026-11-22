@@ -69,6 +69,17 @@ evidence status means rows were acquired; the gate separately checks freshness.
 Candidate fields are internal, cleared at qualification, and omitted from
 `stream_run`. No new manifest schema or A–C feature is introduced here.
 
+PR #3 corrections further require a finite latest Close before the adapter emits
+valid evidence. Invalid price content maps to existing unavailable-evidence
+handling. Free-text PM candidates in team mode use only complete own-rating
+fields with exact five-tier values; missing/invalid/conflicting fields cannot be
+rescued by a quoted consensus rating. Standard parsing is unchanged. Public
+`stream_run` states withhold the Trader proposal until eligibility has completed
+successfully; rejected completion clears it. These rules apply to values and
+nested task states and are covered by the expanded graph and team-rating tests.
+Pre-fix team checkpoints start a fresh run under the versioned team signature;
+standard checkpoint IDs remain unchanged.
+
 Use UTC-aware stored timestamps; analysis dates remain explicit trading dates.
 Freeze schema, null semantics, identifiers and errors before parallel coding.
 Reserve `test/offline/test_comparison.py`, `test_events.py`, `test_manifest.py`,

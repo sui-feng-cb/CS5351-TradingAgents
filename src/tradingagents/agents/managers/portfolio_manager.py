@@ -15,7 +15,7 @@ from tradingagents.agents.context import (
     get_language_instruction,
     get_portfolio_context_from_state,
 )
-from tradingagents.agents.rating import parse_rating
+from tradingagents.agents.rating import parse_rating, parse_team_rating
 from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
 from tradingagents.agents.structured import NO_EXTERNAL_TOOLS, bind_structured, invoke_structured
 
@@ -83,7 +83,10 @@ Write these sections, in this order, starting with the rating on its own line:
             final_rating = decision.rating.value
         else:
             final_trade_decision = llm.invoke(prompt).content
-            final_rating = parse_rating(final_trade_decision)
+            # FR-D / ADR-002 / INV-D: team mode must not let a quoted consensus
+            # normalize an invalid/missing own rating into an allowed candidate.
+            parser = parse_team_rating if state.get("decision_mode") == "team" else parse_rating
+            final_rating = parser(final_trade_decision)
 
         new_risk_debate_state = {
             "history": risk_debate_state["history"],

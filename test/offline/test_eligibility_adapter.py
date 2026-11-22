@@ -90,3 +90,17 @@ def test_report_prose_cannot_replace_missing_execution_metadata():
     assert result["final_rating"] == "REVIEW"
     assert result["eligibility_reason_codes"] == ["market_analyst_not_run"]
     assert "Buy" not in result["final_trade_decision"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("close", [float("inf"), float("-inf"), float("nan"), None, "not-a-price"])
+def test_typed_evidence_rejects_unusable_latest_close(monkeypatch, close):
+    """FR-D/INV-D: date metadata cannot authorize missing or nonfinite critical prices."""
+    from tradingagents.dataflows.errors import NoMarketDataError
+    from tradingagents.dataflows.vendors.yahoo import snapshot
+
+    rows = pd.DataFrame({"Date": [pd.Timestamp("2026-01-20")], "Close": [close]})
+    monkeypatch.setattr(snapshot, "load_ohlcv", lambda *_args, **_kwargs: rows.copy())
+
+    with pytest.raises(NoMarketDataError, match="latest close is not finite"):
+        snapshot.read_verified_market_evidence("NVDA", "2026-01-20")
