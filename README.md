@@ -10,11 +10,11 @@ or provide broker execution.
 - Upstream: https://github.com/tauricresearch/tradingagents
 - Baseline commit: `9fa1196fffbcfd9de5146d2dd2869df84ab99838`
 - Contribution boundary and source mapping: [`docs/baseline.md`](docs/baseline.md)
-- A–D requirements are currently planned, not implemented: see
+- FR-D/NFR-D now have a local team-mode eligibility implementation in the D
+  branch; A–C remain planned. D's local offline regression passes; remote CI and
+  independent safety/integration review remain pending before merge. See
   [`docs/req/requirements.yaml`](docs/req/requirements.yaml) and
   [`docs/architecture/trace-matrix.md`](docs/architecture/trace-matrix.md).
-- Feature implementation is gated on human approval of the relevant plan and
-  tests. Initialization is not a claim that feature work or all CI gates are done.
 
 ## Architecture and layout
 
@@ -53,6 +53,17 @@ python -m pip check
 
 The `pytest` default excludes integration-marked tests. `main.py` starts a real
 analysis and is not an offline smoke-test command.
+
+To opt into the deterministic D eligibility gate for a run, use
+`tradingagents --decision-mode team`; the default `standard` mode preserves the
+upstream decision path. Team mode records trusted market-evidence metadata and
+publishes `REVIEW` with stable reason codes when analyst execution, critical
+evidence freshness/status or the final five-tier rating fails qualification.
+Python callers use `TradingAgentsGraph(decision_mode="team", ...)`. The pure
+`evaluate_eligibility` function is team-only and returns an immutable decision.
+Detailed contracts and actual validation results are in
+[`docs/architecture/interface-contracts.md`](docs/architecture/interface-contracts.md)
+and [`docs/verification/d-eligibility.md`](docs/verification/d-eligibility.md).
 
 The initial A–D scope and course obligations are in
 [`docs/reference/project-requirements.md`](docs/reference/project-requirements.md)

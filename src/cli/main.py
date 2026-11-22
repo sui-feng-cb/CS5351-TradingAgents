@@ -33,6 +33,13 @@ app = typer.Typer(
 )
 
 
+class DecisionMode(StrEnum):
+    """Supported FR-D qualification modes exposed by the analysis CLI."""
+
+    STANDARD = "standard"
+    TEAM = "team"
+
+
 @app.callback(invoke_without_command=True)
 def analyze(
     ctx: typer.Context,
@@ -58,6 +65,13 @@ def analyze(
     analysts: str = typer.Option(
         None, "--analysts", help="Comma-separated analysts, e.g. market,news; skips the prompt"
     ),
+    decision_mode: Annotated[
+        DecisionMode,
+        typer.Option(
+            "--decision-mode",
+            help="Decision qualification mode: standard preserves upstream behavior; team applies the deterministic gate.",
+        ),
+    ] = DecisionMode.STANDARD,
     save: bool | None = typer.Option(
         None, "--save/--no-save", help="Save the report under results_dir without asking"
     ),
@@ -89,7 +103,15 @@ def analyze(
             raise typer.Exit(code=1) from None
 
     try:
-        flags = {"ticker": ticker, "date": date, "analysts": analysts, "save": save, "show": show, "html": html}
+        flags = {
+            "ticker": ticker,
+            "date": date,
+            "analysts": analysts,
+            "decision_mode": decision_mode.value,
+            "save": save,
+            "show": show,
+            "html": html,
+        }
         run_analysis(checkpoint=checkpoint, portfolio=portfolio_context, flags=flags)
     except _NO_CONSOLE_ERRORS:
         # A terminal with no console buffer cannot host the interactive prompts.

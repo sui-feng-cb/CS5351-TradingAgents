@@ -10,6 +10,13 @@ run IDs; missing information is explicit. Query must not mutate state. B keeps
 only bounded per-run evidence, with no cross-run learning in this MVP. D consumes
 execution metadata for the same run, rejecting mismatched/stale state.
 
+The D implementation gives team checkpoints a different run signature from
+standard checkpoints. Internal candidate PM fields can exist in the local
+checkpoint until qualification; `stream_run` strips them and the gate clears
+them on completion. Team `REVIEW` results retain a JSON state log with reasons
+but never create a new pending memory-log entry, so that rejected call cannot
+trigger later settlement/reflection. Standard-mode memory behavior is preserved.
+
 Owner of local run data is the person executing the run; no sensitive account
 inputs belong in shared fixtures. Propose local run-data retention of 30 days,
 subject to human approval; retain sanitized submission evidence through marking.

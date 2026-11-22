@@ -79,7 +79,7 @@ requirements:
   - id: FR-D
     type: functional
     owner: D
-    status: planned
+    status: implemented
     statement: In explicit team decision mode, require the market analyst and publish REVIEW with machine-readable and user-visible reasons if its execution failed/not run, trusted critical market evidence is missing/unavailable/invalid/stale/future-dated, or the final rating is outside the five allowed values, regardless of model narrative.
     priority: Must
     tradeoff: Only approved critical evidence blocks; optional sources follow explicit degradation policy.
@@ -87,11 +87,11 @@ requirements:
     fit_criterion:
       metric: each approved eligible/ineligible fixture has the correct authoritative rating and ordered reasons in structured result, CLI, Markdown and HTML
       threshold: 100%
-      verification: "test/offline/test_eligibility.py (test plan pending independent review): pure gate cases, model Buy conflicts with invalid evidence, graph/CLI/report/state and settlement integration"
+      verification: "test/offline/test_eligibility.py, test_eligibility_adapter.py, test_team_rating.py and D graph cases: gate/Buy conflicts, finite critical Close, exact own ratings, qualified public stream and graph/CLI/report/state/settlement integration; local evidence in docs/verification/d-eligibility.md; independent final review pending"
   - id: NFR-D
     type: security
     owner: D
-    status: planned
+    status: implemented
     statement: The deterministic team-mode eligibility boundary cannot be bypassed by model text, missing or malformed evidence metadata, or a secondary output adapter; REVIEW decisions are excluded from pending settlement/reflection.
     priority: Must
     tradeoff: REVIEW replaces actionable output under uncertainty.
@@ -99,7 +99,7 @@ requirements:
     fit_criterion:
       metric: actionable final ratings or REVIEW-to-settlement entries in the fixed approved negative fixtures
       threshold: zero
-      verification: test/offline/test_eligibility.py (test plan pending independent review), full offline regression, safety-path PR review and ADR-002
+      verification: test/offline/test_eligibility.py, test_eligibility_adapter.py, test_team_rating.py, D graph regressions, full offline suite, safety-path PR review and ADR-002; local evidence in docs/verification/d-eligibility.md
   - id: BASE-01
     type: invariant
     owner: team

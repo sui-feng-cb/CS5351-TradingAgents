@@ -240,6 +240,11 @@ def _run_details(final_state: dict, settings: dict | None) -> list[tuple[str, st
                 _group(_CATEGORY.get(k, k), _chain(v)) for k, v in vendors.items()
             )))
         details.append(("Version", escape(f"TradingAgents {s('version', '?')}")))
+    if final_state.get("eligibility_message"):
+        details.append(("Eligibility", escape(final_state["eligibility_message"])))
+        reason_codes = final_state.get("eligibility_reason_codes") or []
+        if reason_codes:
+            details.append(("Eligibility reason codes", _fields(reason_codes)))
     if final_state.get("memory_note"):
         details.append(("Memory log", escape(final_state["memory_note"])))
     return details

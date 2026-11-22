@@ -31,10 +31,16 @@ class NoMarketDataError(VendorError):
     string into the data channel.
     """
 
-    def __init__(self, symbol: str, canonical: str | None = None, detail: str = ""):
+    def __init__(
+        self, symbol: str, canonical: str | None = None, detail: str = "",
+        *, snapshot_date: str | None = None,
+    ):
         self.symbol = symbol
         self.canonical = canonical or symbol
         self.detail = detail
+        # FR-D / ADR-002 / INV-D: expose the actual date on stale-data rejection
+        # without parsing prose or weakening the upstream OHLCV freshness guard.
+        self.snapshot_date = snapshot_date
         msg = f"No market data for {symbol!r}"
         if canonical and canonical != symbol:
             msg += f" (queried as {canonical!r})"

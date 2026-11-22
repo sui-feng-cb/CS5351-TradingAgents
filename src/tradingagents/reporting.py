@@ -24,6 +24,11 @@ def _header(ticker: str, final_state: dict, settings: dict | None) -> str:
         lines.append(f"- Analysis date: {final_state['trade_date']}")
     if final_state.get("final_trade_decision"):
         lines.append(f"- Rating: {run_rating(final_state)}")
+    if final_state.get("eligibility_message"):
+        lines.append(f"- Eligibility: {final_state['eligibility_message']}")
+        reason_codes = final_state.get("eligibility_reason_codes") or []
+        if reason_codes:
+            lines.append(f"- Eligibility reason codes: {', '.join(reason_codes)}")
     lines.append(f"- Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     if settings:
         s = settings.get
@@ -77,6 +82,14 @@ def _report_parts(final_state: dict) -> list[tuple[str, str, list[tuple[str, str
     """The sections with something to say: (heading, folder, [(agent, file, text)])."""
     parts = []
     for heading, folder, agents in _SECTIONS:
+        # A blocked team decision must not expose the Trader's actionable Buy/Sell
+        # proposal as a secondary conclusion in the public report (NFR-D, INV-D).
+        if (
+            final_state.get("decision_mode") == "team"
+            and final_state.get("eligibility_status") == "ineligible"
+            and folder == "3_trading"
+        ):
+            continue
         written = []
         for agent, filename, path in agents:
             value = final_state
