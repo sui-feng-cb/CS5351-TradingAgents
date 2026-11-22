@@ -78,3 +78,15 @@ entries:
     transcript_status: active-session TUI export pending
     validation: docs/verification/d-eligibility.md
     feature_status: tests-revised-locally; 36-expected-acceptance-failures-and-1430-passes; independent-approval-pending; implementation-not-started
+  - id: C-MANIFEST-TESTS-001
+    scope: fr-c-nfr-c-tests-and-docs-only-draft
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: Draft reviewable FR-C/NFR-C tests; authorize test/ and docs/ C changes only; hold implementation, commit, push and PR for later approval.
+    human_approval: tests-and-docs-only stage approved by the C owner; independent non-C Test-Plan-Approved review still required.
+    publication_direction: No commit, push, PR or merge in this revision; wait for diff review then team review.
+    files: [test/offline/test_manifest.py, test/fixtures/run_manifests/sample_success.json, test/fixtures/run_manifests/sample_failed.json, test/fixtures/run_manifests/gen_dataset.py, test/benchmarks/bench_manifest_query.py, docs/testing/c-manifest-test-plan.md, docs/architecture/interface-contracts.md, docs/architecture/trace-matrix.md, docs/verification/c-manifest.md, docs/ai-use-log.yaml]
+    transcript: pending final TUI export
+    transcript_status: active-session TUI export pending
+    validation: docs/verification/c-manifest.md
+    feature_status: tests-first; 20-expected-acceptance-failures; generator and timing tool baselined; independent-approval-pending; implementation-not-started
