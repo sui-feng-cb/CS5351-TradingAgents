@@ -90,6 +90,27 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
     return graph.compile()
 
 
+def _guarded_market_analyst_node(analyst_graph, report_key: str):
+    """Return an FR-D wrapper that records analyst failure without a candidate call."""
+
+    def guarded_market_analyst(state, config=None):
+        try:
+            result = analyst_graph.invoke(state, config=config)
+        except Exception as exc:
+            logger.warning(
+                "Market analyst failed for %s on %s: %s",
+                state.get("company_of_interest"), state.get("trade_date"), type(exc).__name__,
+            )
+            return {report_key: "", "market_analyst_status": "failed"}
+        report = result.get(report_key) or ""
+        return {
+            report_key: report,
+            "market_analyst_status": "completed" if report.strip() else "failed",
+        }
+
+    return guarded_market_analyst
+
+
 class GraphSetup:
     """Handles the setup and configuration of the agent graph."""
 
@@ -107,7 +128,12 @@ class GraphSetup:
         self.max_tool_rounds = max_tool_rounds
 
     def setup_graph(
-        self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None
+        self,
+        selected_analysts=("market", "social", "news", "fundamentals"),
+        memory_node=None,
+        decision_mode: str = "standard",
+        market_evidence_node=None,
+        eligibility_node=None,
     ):
         """Set up and compile the agent workflow graph.
 
@@ -119,7 +145,16 @@ class GraphSetup:
                 - "fundamentals": Fundamentals analyst
             memory_node: Node that settles past decisions and returns the run's
                 ``past_context``. It runs alongside the analysts.
+            decision_mode: ``team`` adds typed evidence acquisition and the FR-D
+                eligibility boundary; ``standard`` keeps the existing graph path.
+            market_evidence_node: Deterministic typed market-data adapter for team mode.
+            eligibility_node: Deterministic post-Portfolio-Manager gate for team mode.
         """
+        if decision_mode not in {"standard", "team"}:
+            raise ValueError("decision_mode must be 'standard' or 'team'")
+        if decision_mode == "team" and (market_evidence_node is None or eligibility_node is None):
+            raise ValueError("team mode requires market evidence and eligibility nodes")
+
         plan = build_analyst_execution_plan(selected_analysts)
 
         analyst_factories = {
@@ -142,8 +177,16 @@ class GraphSetup:
         workflow = StateGraph(AgentState)
 
         for spec in plan.specs:
-            workflow.add_node(spec.agent_node,
-                              _analyst_graph(spec, analyst_factories[spec.key](), self.max_tool_rounds))
+            analyst_graph = _analyst_graph(
+                spec, analyst_factories[spec.key](), self.max_tool_rounds
+            )
+            if decision_mode == "team" and spec.key == "market":
+                workflow.add_node(
+                    spec.agent_node,
+                    _guarded_market_analyst_node(analyst_graph, spec.report_key),
+                )
+            else:
+                workflow.add_node(spec.agent_node, analyst_graph)
 
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
@@ -152,7 +195,20 @@ class GraphSetup:
         workflow.add_node("Aggressive Analyst", aggressive_analyst)
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Conservative Analyst", conservative_analyst)
-        workflow.add_node("Portfolio Manager", portfolio_manager_node)
+        if decision_mode == "team":
+            def candidate_portfolio_manager(state):
+                """Keep the unqualified PM result internal until the FR-D gate."""
+                result = portfolio_manager_node(state)
+                return {
+                    "risk_debate_state": result["risk_debate_state"],
+                    "candidate_final_trade_decision": result["final_trade_decision"],
+                    "candidate_final_rating": result["final_rating"],
+                }
+
+            workflow.add_node("Portfolio Manager", candidate_portfolio_manager)
+            workflow.add_node("Eligibility Gate", eligibility_node)
+        else:
+            workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
         # The analysts work at the same time; the research debate starts once
         # every one of them has filed its report. The memory log settles past
@@ -161,6 +217,9 @@ class GraphSetup:
         if memory_node is not None:
             workflow.add_node("Memory Log", memory_node)
             first_steps.append("Memory Log")
+        if decision_mode == "team":
+            workflow.add_node("Market Evidence", market_evidence_node)
+            first_steps.append("Market Evidence")
         for node in first_steps:
             workflow.add_edge(START, node)
         workflow.add_edge(first_steps, "Bull Researcher")
@@ -182,6 +241,10 @@ class GraphSetup:
                 RISK_ANALYSIS_PATH_MAP,
             )
 
-        workflow.add_edge("Portfolio Manager", END)
+        if decision_mode == "team":
+            workflow.add_edge("Portfolio Manager", "Eligibility Gate")
+            workflow.add_edge("Eligibility Gate", END)
+        else:
+            workflow.add_edge("Portfolio Manager", END)
 
         return workflow

@@ -1,6 +1,8 @@
 # Interface contracts
 
-Status: D contract proposal for test review; no D executable interface is claimed.
+Status: A–C contracts remain proposals. The D evaluator and graph interface are
+implemented and locally tested against the merged PR #2 test contract. Remote
+CI, independent safety review and integration review remain pending.
 
 - A: exactly two distinct tickers, shared canonical date/config; sequentially call
   upstream propagate/save_reports, isolating each run. Return per-ticker status,
@@ -53,7 +55,7 @@ Status: D contract proposal for test review; no D executable interface is claime
   (`MAX_OHLCV_STALE_DAYS`, currently 10 calendar days) is the proposed freshness
   limit; D tests must pin the boundary and ADR-002 records this reuse.
 
-### D qualification boundary proposal
+### D qualification boundary
 
 - Python callers select `decision_mode="team"` on `TradingAgentsGraph`; the CLI
   exposes `--decision-mode standard|team`, defaulting to `standard` for upstream
@@ -82,6 +84,34 @@ Status: D contract proposal for test review; no D executable interface is claime
   `market_snapshot_after_analysis`, `market_snapshot_stale`,
   `analysis_date_invalid`, and `invalid_rating`. The D test plan fixes their expected mappings before
   implementation.
+
+The local D implementation uses a frozen `EligibilityDecision` with
+`final_rating`, `eligible`, a tuple of `reason_codes`, and `user_message`.
+`evaluate_eligibility` is a team-only evaluator; non-team modes raise `ValueError`
+and standard graph runs do not invoke it. Team graph state records
+`eligibility_status` (`eligible`/`ineligible`), `eligibility_checked`, the reason
+list and `eligibility_message`. Initial statuses are `not_run`, with a null
+snapshot date. Actual analyst execution, rather than report claims, updates the
+execution status. The trusted snapshot adapter uses the requested ticker/date;
+stale-data exceptions expose the actual row date as typed metadata. A valid
+evidence status means rows were acquired; the gate separately checks freshness.
+Candidate fields are internal, cleared at qualification, and omitted from
+`stream_run`. No new manifest schema or A–C feature is introduced here.
+
+PR #3 corrections further require a finite latest Close before the adapter emits
+valid evidence. Invalid price content maps to existing unavailable-evidence
+handling. Free-text PM candidates in team mode use only complete own-rating
+fields with exact five-tier values; missing/invalid/conflicting fields cannot be
+rescued by a quoted consensus rating. Standard parsing is unchanged. Public
+`stream_run` states withhold the Trader proposal until eligibility has completed
+successfully; rejected completion clears it. These rules apply to values and
+nested task states and are covered by the expanded graph and team-rating tests.
+Pre-fix team checkpoints start a fresh run under the versioned team signature;
+standard checkpoint IDs remain unchanged.
+
+For team free text, a CommonMark line break can delimit a rating field. A
+newline inside a code span cannot delimit a field. Other lines in the same
+paragraph remain subject to exact-rating validation.
 
 Use UTC-aware stored timestamps; analysis dates remain explicit trading dates.
 Freeze schema, null semantics, identifiers and errors before parallel coding.

@@ -1,6 +1,7 @@
 # ADR-002: deterministic team-mode decision eligibility gate
 
-- Status: proposed; requires non-D safety review and approved D acceptance tests.
+- Status: implemented and locally tested against the merged tests-only contract;
+  independent non-D safety review, remote CI and integration review remain required.
 - Requirements: FR-D, NFR-D.
 - Invariant: INV-D.
 
@@ -14,7 +15,7 @@ market data was not executed, unavailable, missing, future-dated or stale. The
 qualification boundary therefore needs deterministic evidence metadata and must
 run before a final graph state can reach the CLI, reports or decision log.
 
-## Decision proposal
+## Decision and implementation
 
 1. Add an explicit `standard` / `team` decision mode. `standard` is the default
    and preserves the upstream path. Python graph callers can select
@@ -37,13 +38,70 @@ run before a final graph state can reach the CLI, reports or decision log.
    output and state logs use the gate's final rating and reasons. Non-critical
    analyst omissions continue following the existing runtime policy.
 
+The implementation keeps the evaluator pure and places trusted market evidence
+acquisition in the graph using the existing cached OHLCV path. Snapshot date is
+read from actual rows, with the analysis-date cutoff applied before metadata is
+returned. The existing stale-data exception carries an optional typed
+`snapshot_date`, letting the gate distinguish a stale snapshot from unavailable
+data while the OHLCV loader still rejects stale prices. No freshness bypass is
+added to the loader. Team-mode Portfolio Manager output is held in
+candidate-only state keys until the gate writes public final fields. The CLI
+stream adapter withholds those candidate fields, and blocked reports omit the
+Trader's action proposal so it cannot appear as a secondary final call.
+
+### PR #3 review corrections
+
+Review of `a8d60b660251b83c886bbf00b30ddd75f83bf528` found three concrete INV-D
+bypasses despite the then-passing offline suite. The user requested corrections
+under the existing FR-D/NFR-D scope:
+
+- Before publishing valid team evidence, the snapshot adapter requires a finite
+  latest Close. `+inf`, `-inf`, NaN, missing and nonnumeric close values fail closed
+  as unavailable evidence, using the existing `market_evidence_unavailable`
+  reason. The production loader's standard-mode behavior and stale guard remain
+  unchanged. A dated row alone is insufficient evidence of a usable price.
+- Structured Portfolio Manager ratings retain their typed value. For free text,
+  team mode reads complete, model-owned rating fields and requires an exact
+  case-sensitive five-tier value after removing Markdown wrappers. Missing,
+  invalid or conflicting own fields return REVIEW, resulting in `invalid_rating`;
+  consensus quotations cannot supply the candidate. Standard mode retains the
+  upstream heuristic parser. Prompts and model selection are unchanged.
+- `stream_run` withholds `trader_investment_plan` in both top-level values and
+  nested task results until `eligibility_checked=True` and the result is eligible.
+  Completed rejected output clears the proposal; eligible output releases it.
+  PM candidate fields continue to be withheld. The raw compiled LangGraph and
+  private checkpoints remain internal execution surfaces, not the public stream
+  projection.
+- Version the team checkpoint signature so a pre-fix run cannot resume with
+  already-accepted evidence or a candidate produced by the old parser. Standard
+  checkpoint IDs remain unchanged.
+
+The additions strengthen the existing acceptance boundary without changing the
+rating vocabulary, 10-day freshness limit or reason ordering. Regression tests
+first reproduced the review failures; current results and the independent-review
+boundary are recorded in `docs/verification/d-eligibility.md`.
+
+The PR #3 re-review found that code examples could still be mistaken for own
+ratings. Team free-text parsing now uses the existing CommonMark parser to read
+paragraphs, headings and direct blocks in top-level list items. Indented and
+fenced code, block quotes and HTML blocks cannot supply a rating field. CommonMark
+handles fence character, length and closing syntax. Team checkpoint policy v3
+forces fresh qualification instead of reusing candidates parsed under v1 or v2;
+standard parsing and checkpoint identity are preserved.
+
+Review of `29ce124` found that a multiline inline code span could suppress all
+fields in its paragraph. The team parser now derives field boundaries from real
+CommonMark breaks, retaining the source spelling on each line for exact-value
+validation. Source newlines consumed by inline markup cannot supply a field.
+Team checkpoint policy v4 forces requalification of earlier team candidates.
+
 ## Alternatives considered
 
 | Option | Assessment |
 |---|---|
 | Trust the market analyst's prose or ask another model to validate it | Rejected: model text cannot establish provider execution status or snapshot date. |
 | Parse status/date back out of model-visible tool output | Rejected: couples enforcement to rendered text and makes evidence authority ambiguous. |
-| Validate typed metadata with a deterministic graph node | Proposed: separates data provenance from narrative and places enforcement before publication. |
+| Validate typed metadata with a deterministic graph node | Implemented locally: separates data provenance from narrative and places enforcement before publication. |
 | Gate every upstream run by default | Rejected: silently changes existing callers and conflicts with the explicit team-mode boundary. |
 
 ## Consequences and boundaries
@@ -53,10 +111,11 @@ run before a final graph state can reach the CLI, reports or decision log.
 - The evidence adapter may use the existing cached OHLCV path; its test must
   prove that it does not accept rows beyond `trade_date` and that stale data
   follows the existing 10-day policy.
-- A failed market-analyst subgraph must not leave an actionable result. The
-  integration must either preserve other completed work with `REVIEW`, or fail
-  closed without publishing a rating; the accepted test contract will determine
-  the exact runtime failure representation.
+- A team-mode market-analyst subgraph wrapper records `failed` on an execution
+  exception and allows the remaining graph to reach `REVIEW`. A successful but
+  empty report also records `failed`. Missing execution metadata is not inferred
+  from report prose. Unexpected failures elsewhere propagate without publishing
+  a completed rating or creating a pending decision.
 - A `REVIEW` reason is machine-readable and user-visible. It must remain stable
   across CLI, Markdown, HTML and structured run-state output.
 - Offline tests mock data and model clients; no live provider call is part of

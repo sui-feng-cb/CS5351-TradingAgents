@@ -1,4 +1,4 @@
-"""GOV-01/QUA-01: exercise local checks and the shared same-PR review gate."""
+"""GOV-01/QUA-01: exercise local checks and the independent safety-review gate."""
 
 import os
 import subprocess
@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts import check_github_test_approvals as reviews_gate, check_governance
+from scripts import check_github_safety_reviews as reviews_gate, check_governance
 
 OFFLINE_TEST = "test/offline/test_feature.py"
 TEST_FIXTURE = "test/fixtures/feature.txt"
@@ -69,7 +69,7 @@ def branch(tmp_path, monkeypatch):
     return base, commit
 
 
-def review_record(sha, *, login="peer", state="COMMENTED", user_type="User", association="MEMBER",
+def review_record(sha, *, login="peer", state="APPROVED", user_type="User", association="MEMBER",
                   submitted_at="2026-11-22T11:00:00Z"):
     return {
         "user": {"login": login, "type": user_type},
@@ -77,7 +77,6 @@ def review_record(sha, *, login="peer", state="COMMENTED", user_type="User", ass
         "state": state,
         "commit_id": sha,
         "submitted_at": submitted_at,
-        "body": f"Test-Plan-Approved: {sha}\n\nPositive and negative expectations reviewed.",
     }
 
 
@@ -90,48 +89,20 @@ def verify(monkeypatch, base, head, reviews):
     reviews_gate.verify_pr(base, head, 42)
 
 
-def test_same_pr_accepts_independent_review_of_unchanged_tests(branch, monkeypatch):
+def test_regular_feature_pr_does_not_require_same_pr_test_review(branch, monkeypatch):
     base, commit = branch
-    tests = commit({OFFLINE_TEST: "def test_sample(): assert True\n", TEST_FIXTURE: "fixture"}, hour=10)
+    commit({OFFLINE_TEST: "def test_sample(): assert True\n", TEST_FIXTURE: "fixture"}, hour=10)
     head = commit({NORMAL_SOURCE: "feature = True\n"}, hour=12)
-    verify(monkeypatch, base, head, [review_record(tests)])
+    monkeypatch.setattr(reviews_gate, "api", lambda _: pytest.fail("ordinary PR must not query reviews"))
+    reviews_gate.verify_pr(base, head, 42)
 
 
-def test_tests_only_draft_can_run_governance_without_prior_review(branch, monkeypatch):
+def test_test_changes_after_implementation_do_not_require_same_pr_approval(branch, monkeypatch):
     base, commit = branch
-    tests = commit({OFFLINE_TEST: "def test_sample(): assert True\n"}, hour=10)
-    monkeypatch.setattr(reviews_gate, "api", {}.__getitem__)
-    reviews_gate.verify_pr(base, tests, 42)
-
-
-@pytest.mark.parametrize("review_kwargs", [
-    None, {"login": AUTHOR.upper()}, {"user_type": "Bot"}, {"association": "NONE"},
-    {"submitted_at": "2026-11-22T13:00:00Z"},
-])
-def test_missing_self_bot_external_or_late_test_review_is_rejected(branch, monkeypatch, review_kwargs):
-    base, commit = branch
-    tests = commit({OFFLINE_TEST: "def test_sample(): assert True\n"}, hour=10)
-    head = commit({NORMAL_SOURCE: "feature = True\n"}, hour=12)
-    reviews = [review_record(tests, **review_kwargs)] if review_kwargs is not None else []
-    with pytest.raises(ValueError, match="No independent, pre-implementation test review"):
-        verify(monkeypatch, base, head, reviews)
-
-
-def test_review_of_commit_already_containing_application_code_is_rejected(branch, monkeypatch):
-    base, commit = branch
-    combined = commit({OFFLINE_TEST: "def test_sample(): assert True\n", NORMAL_SOURCE: "feature = True\n"}, hour=10)
-    head = commit({"Report.md": "Verification summary"}, hour=12)
-    with pytest.raises(ValueError, match="No independent, pre-implementation test review"):
-        verify(monkeypatch, base, head, [review_record(combined, submitted_at="2026-11-22T10:00:00Z")])
-
-
-@pytest.mark.parametrize("path", [OFFLINE_TEST, TEST_FIXTURE, "test/offline/test_added.py"])
-def test_approval_does_not_cover_modified_or_added_test_inputs(branch, monkeypatch, path):
-    base, commit = branch
-    tests = commit({OFFLINE_TEST: "def test_sample(): assert True\n", TEST_FIXTURE: "fixture"}, hour=10)
-    head = commit({NORMAL_SOURCE: "feature = True\n", path: "unreviewed change\n"}, hour=12)
-    with pytest.raises(ValueError, match="No independent, pre-implementation test review"):
-        verify(monkeypatch, base, head, [review_record(tests)])
+    commit({NORMAL_SOURCE: "feature = True\n"}, hour=10)
+    head = commit({OFFLINE_TEST: "def test_revised(): assert True\n"}, hour=12)
+    monkeypatch.setattr(reviews_gate, "api", lambda _: pytest.fail("ordinary PR must not query reviews"))
+    reviews_gate.verify_pr(base, head, 42)
 
 
 def test_safety_gate_requires_adr_and_current_independent_approval(branch, monkeypatch):
@@ -150,3 +121,20 @@ def test_safety_gate_requires_adr_and_current_independent_approval(branch, monke
     dismissed = review_record(final, state="DISMISSED")
     with pytest.raises(ValueError, match="approval of its current head"):
         verify(monkeypatch, base, final, [early, approved, dismissed])
+
+
+def test_safety_review_does_not_require_a_test_only_review_prefix(branch, monkeypatch):
+    base, commit = branch
+    head = commit({SAFETY_SOURCE: "gate = True\n", ADR: "# Decision"}, hour=10)
+    verify(monkeypatch, base, head, [review_record(head)])
+
+
+@pytest.mark.parametrize("review_kwargs", [
+    None, {"login": AUTHOR.upper()}, {"user_type": "Bot"}, {"association": "NONE"},
+])
+def test_safety_gate_rejects_missing_self_bot_or_external_approval(branch, monkeypatch, review_kwargs):
+    base, commit = branch
+    head = commit({SAFETY_SOURCE: "gate = True\n", ADR: "# Decision"}, hour=10)
+    reviews = [review_record(head, **review_kwargs)] if review_kwargs is not None else []
+    with pytest.raises(ValueError, match="approval of its current head"):
+        verify(monkeypatch, base, head, reviews)

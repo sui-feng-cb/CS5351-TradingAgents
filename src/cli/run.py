@@ -125,6 +125,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         config=config,
         debug=True,
         callbacks=[stats_handler],
+        decision_mode=flags.get("decision_mode", "standard"),
     )
 
     message_buffer.init_for_analysis(selected_analyst_keys)
@@ -267,6 +268,16 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
                     wall_time_tracker=analyst_wall_time_tracker,
                 )
 
+                gate_ready = (
+                    flags.get("decision_mode", "standard") != "team"
+                    or chunk.get("eligibility_checked") is True
+                    or (
+                        chunk.get("final_rating") == "REVIEW"
+                        and bool(chunk.get("eligibility_reason_codes"))
+                        and bool(chunk.get("eligibility_message"))
+                    )
+                )
+
                 # Research Team - Handle Investment Debate State
                 if chunk.get("investment_debate_state"):
                     debate_state = chunk["investment_debate_state"]
@@ -293,7 +304,10 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
                         message_buffer.update_agent_status("Trader", "in_progress")
 
                 # Trading Team
-                if chunk.get("trader_investment_plan"):
+                trader_output_ready = (
+                    flags.get("decision_mode", "standard") != "team" or gate_ready
+                )
+                if chunk.get("trader_investment_plan") and trader_output_ready:
                     message_buffer.update_report_section(
                         "trader_investment_plan", chunk["trader_investment_plan"]
                     )
@@ -327,7 +341,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
                         message_buffer.update_report_section(
                             "final_trade_decision", f"### Neutral Analyst Analysis\n{neu_hist}"
                         )
-                    if judge and message_buffer.agent_status.get("Portfolio Manager") != "completed":
+                    if judge and gate_ready and message_buffer.agent_status.get("Portfolio Manager") != "completed":
                         message_buffer.update_agent_status("Portfolio Manager", "in_progress")
                         message_buffer.update_report_section(
                             "final_trade_decision", f"### Portfolio Manager Decision\n{judge}"
@@ -339,7 +353,15 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
 
                 update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-                trace.append(chunk)
+                trace_chunk = chunk
+                if flags.get("decision_mode", "standard") == "team" and not gate_ready:
+                    trace_chunk = dict(chunk)
+                    for key in (
+                        "final_rating", "final_trade_decision",
+                        "candidate_final_rating", "candidate_final_trade_decision",
+                    ):
+                        trace_chunk.pop(key, None)
+                trace.append(trace_chunk)
 
             # Streamed chunks are per-node deltas, not full state. Merge them
             # so every report field populated across the run is present.
@@ -378,11 +400,19 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
     # A decision nobody can read is not a position. Say so here rather than
     # leaving the run to look like a normal result.
     if is_review(run_rating(final_state)):
-        console.print(
-            "[yellow]No rating could be read from the final decision, so this run "
-            "is recorded for review rather than as a position. Re-run, or read the "
-            "decision text below and judge it yourself.[/yellow]\n"
-        )
+        if final_state.get("decision_mode") == "team" and final_state.get("eligibility_message"):
+            reasons = ", ".join(final_state.get("eligibility_reason_codes", []))
+            console.print(
+                f"[yellow]REVIEW — {final_state['eligibility_message']}[/yellow]"
+                + (f" [dim]Reason codes: {reasons}[/dim]" if reasons else "")
+                + "\n"
+            )
+        else:
+            console.print(
+                "[yellow]No rating could be read from the final decision, so this run "
+                "is recorded for review rather than as a position. Re-run, or read the "
+                "decision text below and judge it yourself.[/yellow]\n"
+            )
     console.print(f"[dim]{analyst_wall_time_tracker.format_summary()}[/dim]")
 
     _offer_reports(final_state, graph, selections["ticker"],

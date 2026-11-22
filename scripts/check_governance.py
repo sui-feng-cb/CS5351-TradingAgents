@@ -110,7 +110,7 @@ def _blob_at(revision: str, filename: str) -> str | None:
 
 
 def pr_gates(base: str) -> None:
-    """GOV-01: check PR changes locally; GitHub CI validates actual reviews."""
+    """GOV-01: check local PR changes; safety reviews run separately in GitHub CI."""
     names = changed_paths(base)
     application = changed_code(base)
     test_changes = any(name.startswith("test/") for name in names)

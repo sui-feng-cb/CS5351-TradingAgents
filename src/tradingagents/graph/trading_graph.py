@@ -13,7 +13,9 @@ from tradingagents.agents.rating import run_rating
 from tradingagents.dataflows.config import run_config, run_config_context, set_config
 from tradingagents.dataflows.date_window import get_current_date, is_historical
 from tradingagents.dataflows.symbols import safe_ticker_component
+from tradingagents.dataflows.vendors.yahoo.snapshot import read_verified_market_evidence
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.enhancements.eligibility import evaluate_eligibility
 from tradingagents.llm_clients import create_tier_client, tier_provider
 from tradingagents.memory import TradingMemoryLog, settlement
 from tradingagents.memory.reflection import Reflector
@@ -57,6 +59,7 @@ class TradingAgentsGraph:
         debug=False,
         config: dict[str, Any] = None,
         callbacks: list | None = None,
+        decision_mode: str = "standard",
     ):
         """Initialize the trading agents graph and components.
 
@@ -65,8 +68,12 @@ class TradingAgentsGraph:
             debug: Whether to run in debug mode
             config: Configuration dictionary. If None, uses default config
             callbacks: Optional list of callback handlers (e.g., for tracking LLM/tool stats)
+            decision_mode: ``standard`` preserves upstream behavior; ``team`` enforces FR-D.
         """
+        if decision_mode not in {"standard", "team"}:
+            raise ValueError("decision_mode must be 'standard' or 'team'")
         self.debug = debug
+        self.decision_mode = decision_mode
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
 
@@ -109,7 +116,13 @@ class TradingAgentsGraph:
         self.selected_analysts = tuple(selected_analysts)
 
         # Set up the graph: keep the workflow for recompilation with a checkpointer.
-        self.workflow = self.graph_setup.setup_graph(selected_analysts, memory_node=self._memory_step)
+        self.workflow = self.graph_setup.setup_graph(
+            selected_analysts,
+            memory_node=self._memory_step,
+            decision_mode=self.decision_mode,
+            market_evidence_node=self._market_evidence_step if decision_mode == "team" else None,
+            eligibility_node=self._eligibility_step if decision_mode == "team" else None,
+        )
         self.graph = self.workflow.compile()
         self._checkpointer_ctx = None
         self._resuming = False
@@ -149,7 +162,7 @@ class TradingAgentsGraph:
         """
         settings = {k: v for k, v in self.config.items() if k not in _NOT_IN_SIGNATURE}
         digest = hashlib.sha256(json.dumps(settings, sort_keys=True, default=str).encode()).hexdigest()[:12]
-        return "|".join([
+        signature_parts = [
             "analysts=" + ",".join(self.selected_analysts),
             f"debate={self.config['max_debate_rounds']}",
             f"risk={self.config['max_risk_discuss_rounds']}",
@@ -162,7 +175,12 @@ class TradingAgentsGraph:
             "analysts=parallel",
             "memory=parallel",
             f"settings={digest}",
-        ])
+        ]
+        # INV-D / ADR-002: pre-fix team checkpoints may already contain evidence
+        # or candidates accepted by the old rules. Standard checkpoint IDs stay stable.
+        if getattr(self, "decision_mode", "standard") == "team":
+            signature_parts.extend(("decision_mode=team", "eligibility=v4"))
+        return "|".join(signature_parts)
 
     def propagate(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):
         """Run the trading agents graph for a company on a specific date.
@@ -261,6 +279,7 @@ class TradingAgentsGraph:
         cfg = self.config
         return {
             "version": tradingagents.__version__,
+            "decision_mode": getattr(self, "decision_mode", "standard"),
             "llm_provider": cfg.get("llm_provider"),
             "deep_think_provider": tier_provider(cfg, "deep") if cfg.get("llm_provider") else None,
             "deep_think_llm": cfg.get("deep_think_llm"),
@@ -298,13 +317,81 @@ class TradingAgentsGraph:
         and loads them alongside the analysts (see ``_memory_step``).
         """
         trade_date = _validate_trade_date(trade_date)
-        return self.propagator.create_initial_state(
+        state = self.propagator.create_initial_state(
             company_name,
             trade_date,
             asset_type=asset_type,
             instrument_context=self.resolve_instrument_context(company_name, asset_type, trade_date),
             portfolio_context=portfolio.render(company_name) if portfolio is not None else "",
         )
+        state["decision_mode"] = getattr(self, "decision_mode", "standard")
+        if state["decision_mode"] == "team":
+            state.update({
+                "market_analyst_status": "not_run",
+                "market_evidence_status": "not_run",
+                "snapshot_date": None,
+                "eligibility_checked": False,
+            })
+        return state
+
+    def _market_evidence_step(self, state):
+        """Acquire trusted typed evidence independently of analyst prose (FR-D, INV-D)."""
+        try:
+            evidence = read_verified_market_evidence(
+                state["company_of_interest"], state["trade_date"]
+            )
+        except Exception as exc:
+            logger.warning(
+                "Verified market evidence unavailable for %s on %s: %s",
+                state["company_of_interest"], state["trade_date"], type(exc).__name__,
+            )
+            return {"market_evidence_status": "unavailable", "snapshot_date": None}
+        return {
+            "market_evidence_status": evidence.status,
+            "snapshot_date": evidence.snapshot_date,
+        }
+
+    def _eligibility_step(self, state):
+        """Replace the PM candidate with the authoritative FR-D result before publication."""
+        if "market" not in self.selected_analysts:
+            analyst_status = "not_run"
+        else:
+            analyst_status = state.get("market_analyst_status")
+
+        decision = evaluate_eligibility(
+            decision_mode="team",
+            candidate_rating=state.get("candidate_final_rating"),
+            market_analyst_status=analyst_status,
+            market_evidence_status=state.get("market_evidence_status"),
+            snapshot_date=state.get("snapshot_date"),
+            analysis_date=state.get("trade_date"),
+        )
+        reasons = list(decision.reason_codes)
+        if decision.eligible:
+            final_trade_decision = state.get("candidate_final_trade_decision") or ""
+        else:
+            final_trade_decision = (
+                f"REVIEW\n\n{decision.user_message}\n\n"
+                f"Reason codes: {', '.join(decision.reason_codes)}"
+            )
+        result = {
+            "decision_mode": "team",
+            "market_analyst_status": analyst_status,
+            "eligibility_status": "eligible" if decision.eligible else "ineligible",
+            "eligibility_reason_codes": reasons,
+            "eligibility_message": decision.user_message,
+            "eligibility_checked": True,
+            "final_rating": decision.final_rating,
+            "final_trade_decision": final_trade_decision,
+            # Clear staged candidate data from the completed public state.
+            "candidate_final_rating": None,
+            "candidate_final_trade_decision": None,
+        }
+        if not decision.eligible:
+            # Do not expose the Trader's action proposal as a secondary public
+            # decision when the authoritative qualification result is REVIEW.
+            result["trader_investment_plan"] = ""
+        return result
 
     def _memory_step(self, state):
         """The graph's Memory Log step, alongside the analysts (#1428): settle every
@@ -360,6 +447,12 @@ class TradingAgentsGraph:
         """Record a finished run: its state log, and its decision in the memory log
         for reflection on the next same-ticker run. propagate() and the CLI both end here."""
         self._log_state(trade_date, final_state)
+        if (
+            (getattr(self, "decision_mode", "standard") == "team"
+             or final_state.get("decision_mode") == "team")
+            and run_rating(final_state) == "REVIEW"
+        ):
+            return
         decision = final_state.get("final_trade_decision")
         if not decision:
             logger.warning("No final decision for %s on %s; nothing added to the memory log",
@@ -404,6 +497,23 @@ class TradingAgentsGraph:
 
         return final_state, run_rating(final_state)
 
+    def _public_stream_state(self, state):
+        """Withhold team candidate/action fields until qualification (NFR-D, ADR-002, INV-D)."""
+        if getattr(self, "decision_mode", "standard") != "team":
+            return state
+        public = dict(state)
+        public.pop("candidate_final_rating", None)
+        public.pop("candidate_final_trade_decision", None)
+        if not (
+            state.get("eligibility_checked") is True
+            and state.get("eligibility_status") == "eligible"
+        ):
+            public.pop("trader_investment_plan", None)
+            # A completed rejection must also clear any caller-accumulated value.
+            if state.get("eligibility_checked") is True:
+                public["trader_investment_plan"] = ""
+        return public
+
     def stream_run(self, graph_input, **args):
         """Stream a run as ``(messages, state)`` pairs.
 
@@ -428,10 +538,12 @@ class TradingAgentsGraph:
                     result = chunk.get("result") if mode == "tasks" else None
                     if isinstance(result, dict):
                         report = {k: v for k, v in result.items() if k != "messages" and v}
+                        report = self._public_stream_state(report)
                         if result.get("messages") or report:
                             yield result.get("messages", []), report or None
                 elif mode == "values":
-                    yield chunk.get("messages", []), chunk
+                    public_chunk = self._public_stream_state(chunk)
+                    yield chunk.get("messages", []), public_chunk
         finally:
             context.run(stream.close)
 
@@ -464,6 +576,13 @@ class TradingAgentsGraph:
             "final_rating": run_rating(final_state),
             "run_settings": self.run_settings(),
         }
+        for key in (
+            "decision_mode", "market_analyst_status", "market_evidence_status",
+            "snapshot_date", "eligibility_status", "eligibility_reason_codes",
+            "eligibility_message",
+        ):
+            if key in final_state:
+                entry[key] = final_state[key]
 
         # A ticker that would escape the results directory is rejected.
         safe_ticker = safe_ticker_component(final_state["company_of_interest"])

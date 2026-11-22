@@ -1,7 +1,8 @@
 # Architecture blueprint
 
 Status: draft for human review. ADR-001 selects layout migration plus narrow
-extensions; FR-A–D have not been implemented.
+extensions. FR-A–C remain planned; FR-D has a local implementation with full
+offline regression passing; remote CI and independent reviews remain pending.
 
 ## Drivers and boundaries
 
@@ -13,7 +14,7 @@ require deterministic evidence and final-rating authority boundaries.
 flowchart LR
   CLI[CLI] --> Graph[Existing TradingAgents graph]
   Graph --> Sources[Existing dataflows and providers]
-  Graph --> D[Planned deterministic eligibility gate D]
+  Graph --> D[Team-mode deterministic eligibility gate D]
   D --> Reports[Authoritative result and reports]
   A[Planned dual-ticker comparison A] --> Graph
   B[Planned common-event grouping B] --> Sources
@@ -21,17 +22,17 @@ flowchart LR
 ```
 
 LLM narrative is advisory. Validated provider/evidence metadata and D's final
-rating govern published structured results. Actual application guardrails remain
-the upstream implementation until D is built and tested. INV-D is a target rule,
-not an initialized enforcement claim. ADR-002 proposes an explicit `team`
-decision mode and a deterministic graph node after the Portfolio Manager and
-before publication; `standard` mode preserves existing behavior.
+rating govern published structured results. The local D implementation adds an
+explicit `team` decision mode and a deterministic graph gate after the Portfolio
+Manager; `standard` remains the default. INV-D is not claimed verified until the
+full offline suite and independent safety/integration reviews pass. ADR-002
+records the implemented design and the remaining review boundaries.
 
 ## Components and integration
 
 Upstream agents/graph/dataflows/llm_clients/memory/reporting and CLI retain their
-responsibilities. Four planned modules are listed in AGENTS.md. Shared schema
-proposals are in interface-contracts.md and require approval before implementation.
+responsibilities. Module ownership is listed in AGENTS.md. Shared schemas and
+the implemented D interface are recorded in interface-contracts.md.
 Default config and existing provider interfaces are reused.
 
 ## Supervision, verification and observability

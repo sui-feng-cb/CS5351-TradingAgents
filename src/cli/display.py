@@ -412,7 +412,11 @@ def display_complete_report(final_state):
                 console.print(Panel(Markdown(content), title=title, border_style="blue", padding=(1, 2)))
 
     # III. Trading Team
-    if final_state.get("trader_investment_plan"):
+    blocked_team_decision = (
+        final_state.get("decision_mode") == "team"
+        and final_state.get("eligibility_status") == "ineligible"
+    )
+    if final_state.get("trader_investment_plan") and not blocked_team_decision:
         console.print(Panel("[bold]III. Trading Team Plan[/bold]", border_style="yellow"))
         console.print(Panel(Markdown(final_state["trader_investment_plan"]), title="Trader", border_style="blue", padding=(1, 2)))
 
@@ -434,7 +438,14 @@ def display_complete_report(final_state):
     # V. Portfolio Manager Decision
     if final_state.get("final_trade_decision"):
         console.print(Panel("[bold]V. Portfolio Manager Decision[/bold]", border_style="green"))
-        console.print(Panel(Markdown(final_state["final_trade_decision"]), title="Portfolio Manager", border_style="blue", padding=(1, 2)))
+        decision_text = final_state["final_trade_decision"]
+        eligibility_message = final_state.get("eligibility_message") or ""
+        reason_codes = final_state.get("eligibility_reason_codes") or []
+        if eligibility_message and eligibility_message not in decision_text:
+            decision_text += f"\n\n{eligibility_message}"
+        if reason_codes and not all(code in decision_text for code in reason_codes):
+            decision_text += f"\n\nReason codes: {', '.join(reason_codes)}"
+        console.print(Panel(Markdown(decision_text), title="Portfolio Manager", border_style="blue", padding=(1, 2)))
 
 
 def update_research_team_status(status):

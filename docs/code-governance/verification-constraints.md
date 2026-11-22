@@ -1,11 +1,12 @@
 # Verification constraints
 
 Every fit criterion has a test; every invariant has a violation-triggered failing
-test. New tests name requirement/invariant IDs. Feature tests must be approved
-before implementation. Keep expected outcomes independent of production logic.
-Modules A–D follow the same [GitHub Flow](../testing/test-approval-process.md):
-record test evidence on the draft PR before application code, run all offline
-tests locally and in CI, and require independent final review before merging.
+test. New tests name requirement/invariant IDs. Under `Prompt.md`, a human approves
+the plan and test intent before application implementation. Keep expected outcomes
+independent of production logic. Modules A–D follow [GitHub Flow](../testing/test-approval-process.md):
+test-first GitHub review is recommended, all offline tests run locally and in CI,
+and an independent final review is required before merging. No same-PR test-review
+record is a CI merge condition.
 
 1. Structural: package/CLI imports, resource discovery, dependency/module boundary,
    permissions and requirement schema validation.
@@ -21,9 +22,17 @@ Feature acceptance tests, mutation checks and performance results are not claime
 
 ## D eligibility-gate test approval target
 
-Before D application code, a non-D reviewer must approve the tests-only change as
-described in [the shared GitHub Flow](../testing/test-approval-process.md). The
-fixed negative matrix in `test/offline/test_eligibility.py` must include analyst
+The user confirmed the fixed D tests-only contract was merged in PR #2 and
+approved implementation against it. The original D acceptance files remain
+unchanged. Current local implementation results, supplementary adapter tests,
+the two default-mode CLI fixture updates and outstanding independent reviews are
+recorded in `docs/verification/d-eligibility.md`. Local passing checks do not
+substitute for the final non-D safety review or remote CI.
+
+Before D application code, the human plan/test approval required by `Prompt.md`
+must cover the D scope; a separate non-D GitHub test-only review is recommended
+as supplementary evidence, not enforced by CI. The fixed negative matrix in
+`test/offline/test_eligibility.py` must include analyst
 not-run/failure, absent/unknown/unavailable evidence, missing/malformed/future/
 stale snapshot dates, invalid rating, multiple simultaneous failures, and a model
 `Buy` conflicting with each blocked-evidence case. Expected ratings, reason-code

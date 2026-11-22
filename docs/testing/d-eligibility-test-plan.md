@@ -1,6 +1,8 @@
 # D eligibility-gate test plan
 
-Status: tests-only plan prepared; independent non-D test approval is pending.
+Status: fixed tests-only contract merged in PR #2 as confirmed by the user; the
+implementation is being checked against that unchanged contract. Do not change
+expected outcomes without a newly reviewed tests-only revision.
 
 ## Trace and scope
 
@@ -9,7 +11,8 @@ Status: tests-only plan prepared; independent non-D test approval is pending.
 - Owner: D. Safety acceptance reviewer: a team member other than D.
 - Offline suite: `test/offline/test_eligibility.py`; no model API, market API,
   account input, or live credential is used.
-- The application implementation is explicitly outside this tests-only stage.
+- PR #2 supplied the fixed tests-only contract. The application implementation
+  now exists locally and is verified against that contract in this work session.
 
 ## Candidate public evaluator contract
 
@@ -18,8 +21,9 @@ Status: tests-only plan prepared; independent non-D test approval is pending.
 (`completed`, `not_run`, or `failed`), market-evidence state (`valid`, `not_run`,
 or `unavailable`), optional snapshot date, and analysis date. It returns an immutable decision with
 `final_rating`, `eligible`, ordered `reason_codes`, and a deterministic
-`user_message`. Unknown/missing states and malformed dates fail closed. This is a
-proposal for test review, not an implemented interface.
+`user_message`. Unknown/missing states and malformed dates fail closed. This
+interface is implemented locally with passing offline regression. Remote CI and
+independent safety and integration review remain pending.
 
 The exact valid rating values are `Buy`, `Overweight`, `Hold`, `Underweight`,
 `Sell`. Valid evidence requires a valid ISO calendar date no later than the
@@ -89,7 +93,9 @@ must run them on every applicable change.
 - Baseline governance, Ruff, mypy (`scripts/check_governance.py`) and pip checks
   passed. Full command output belongs in the active session/export, not fabricated
   into this plan.
-- New tests are expected to fail against the unimplemented feature baseline.
+- At the original test-only baseline, the new tests failed against the absent
+  feature. Current implementation results are recorded in
+  `docs/verification/d-eligibility.md`.
 - Actual focused baseline on the initial PR #2 tests-only head (`0448de2`):
   `python -m pytest test/offline/test_eligibility.py -q` collected 34 cases, with
   32 failures and 2 passes (report fixture and vocabulary). One original
@@ -103,9 +109,9 @@ must run them on every applicable change.
   and not test_team_mode_with_no_market_analyst_fails_closed_as_review'` reported
   1427 passed, 1 skipped, 2 deselected, 100 subtests passed. This verifies prior
   offline tests remain green in the tests-only revision.
-- `Test-Plan-Approved: <full SHA>` and reviewer rationale: pending. No D
-  application code may be written until a non-D reviewer approves the tests-only
-  revision through the documented same-PR GitHub review process.
+- PR #2 was squash-merged to `main` according to the user's session update. This
+  work uses its merged tests as the fixed acceptance contract. Historical review
+  details remain in the prior review artifacts and are not re-evaluated here.
 
 ## PR #2 review correction
 
@@ -117,6 +123,12 @@ read-only GitHub metadata. Finding 1 remains pending: return the PR to draft and
 obtain the required independent human Comment review of the revised tests-only
 commit. The local memo is not a GitHub test-plan approval.
 
+Policy note: the preceding statements record the status and expectations at the
+time of that test-plan correction. ADR-003 subsequently made same-PR GitHub
+test-plan review advisory; no retrospective approval is required. Human approval
+of the plan/test intent and independent final/safety review remain governed by
+the current project rules.
+
 The final revised full run (`.venv/bin/python -m pytest -q --tb=no --disable-warnings`)
 reported **36 failed, 1430 passed, 1 skipped, 1 deselected, 100 subtests passed**.
 Every failure is in D's tests-first cases; the prior offline suite passed in the
@@ -125,3 +137,49 @@ were introduced to make these unimplemented acceptance cases pass. Keep this
 tests-only stage as a draft; after approval and implementation, all acceptance
 and regression tests must pass. Static/schema/dependency checks passed; see the
 verification log for exact commands and their scope.
+
+## Implementation continuation
+
+The review-correction section above is the historical pre-merge record. The user
+subsequently confirmed PR #2 was merged and approved the implementation blueprint.
+`test_eligibility.py` and the four D graph cases are unchanged in this work.
+Supplementary `test_eligibility_adapter.py` tests exercise actual row-date
+selection, typed stale exceptions without releasing prices, analyst execution
+failure, and rejection of report prose when execution metadata is absent. Two
+upstream CLI exact-flags fixtures retain their old assertions and add only the
+new literal default mode. Current commands/results and remaining reviews are in
+`docs/verification/d-eligibility.md`; no historical red result is presented as
+current passing evidence.
+
+## PR #3 regression extension
+
+The user requested repairs of the three P1 findings in `docs/review-memo.md`.
+The regression additions implement the existing FR-D/NFR-D/INV-D expectations;
+they do not change allowed ratings, freshness thresholds or reason order. They
+were written and run before production corrections. No new independent GitHub
+test-plan approval is claimed for this local revision.
+
+| Case | Independent expectation |
+|---|---|
+| Real OHLCV loader with latest `+inf` or `-inf` Close, older valid row and model Buy | Team REVIEW, evidence unavailable, no Buy final decision, zero pending entries |
+| Same real-loader setup with finite Close | Buy permitted with actual snapshot date and one normal pending entry |
+| Adapter receives nonfinite, missing or nonnumeric latest Close | Reject with NoMarketDataError before emitting valid metadata |
+| Free-text PM says Strong Buy or omits own rating while consensus says Buy | Team REVIEW with exactly invalid_rating and zero pending entries; standard retains its heuristic Buy |
+| Every rejected team stream frame | No Trader proposal or internal PM candidate keys escape |
+| Eligible team stream | Trader proposal appears only after eligibility_checked=True and eligible status |
+| SQLite checkpoint created with pre-fix team signature and a staged Buy | Start fresh; unavailable evidence produces REVIEW and zero pending entries |
+| Team free-text graph receives an indented or mixed-fence code example with `Rating: Buy`, and no own field | Valid evidence does not rescue the candidate: REVIEW with `invalid_rating` and zero pending entries |
+| Team free-text graph receives a real `Hold` field after a correctly closed code block | Hold with no eligibility reasons and one matching pending entry |
+| Team free-text graph receives a visible `Rating: Strong Buy` in the same paragraph as a multiline code span, followed by a separate `Rating: Buy` | Valid evidence, REVIEW with exactly `invalid_rating`, zero pending entries |
+| Team free-text graph receives a visible `Rating: Hold` in the same paragraph as a multiline code span | Hold with no eligibility reasons and one matching pending entry |
+| A visible Hold is followed by a Markdown hard break and a multiline code example | Hold for both trailing-space and backslash break syntax |
+| Parser receives a multiline code span as the entire rating value, or an inline comment beside an invalid own rating | REVIEW in both cases |
+| A v3 SQLite checkpoint already holds a Buy and current market evidence is unavailable | Start fresh, return REVIEW with `market_evidence_unavailable` and zero pending entries |
+| Five exact own ratings in plain/list/heading Markdown plus consensus quotation | Preserve the exact own value |
+| Lowercase/uppercase/extra prose, missing or conflicting own fields, quote-only rating and scale legend | REVIEW, even with consensus Buy |
+
+`test_eligibility.py` remains unchanged. `test_graph_end_to_end.py` strengthens
+the existing rejected-stream assertion and adds production-path regressions.
+`test_eligibility_adapter.py` adds invalid-price cases; `test_team_rating.py`
+contains literal parser expectations. Historical descriptions above that those
+files were unchanged apply only to the original implementation session.
