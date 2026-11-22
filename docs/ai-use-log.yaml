@@ -62,6 +62,21 @@ entries:
     transcript_status: tui-export-unavailable-in-tool-interface
     validation: .opencode/skills/pr2-review/SKILL.md
     feature_status: review-completed; merge-blocking-findings-present
+  - id: REVIEW-PR2-002
+    scope: read-only-re-review-of-pr-2-tests-only-corrections
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, GOV-01]
+    user_direction: "PR #2 已按要求修改，未通过的 CI 是因为还没有实际代码实现，目前只是测试先行，再次 review 请求通过。"
+    human_approval: tests-only re-review requested; application implementation remains gated
+    publication_direction: No commit, push, GitHub review submission or merge action performed.
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr2-review/SKILL.md]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 2
+    base_head: 0448de2b0e7ff1aa06f1ed2a61f91dca292a81db
+    head_sha: f4be027ebbc43c3226c63209b743cf7482711556
+    transcript_status: tui-export-unavailable-in-tool-interface
+    validation: docs/review-memo.md
+    feature_status: revised-tests-only-contract-approved; independent-human-github-test-plan-review-still-required
   - id: D-ELIG-PR2-FIX-001
     scope: address-pr2-tests-first-findings
     agent: OpenCode

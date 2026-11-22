@@ -85,6 +85,73 @@ the missing positive and boundary tests are added, stale verification metadata i
 corrected, and the required checks are green or the deliberately red tests-only
 stage is explicitly kept as a draft under the documented workflow.
 
+## PR #2 Re-review
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **URL:** https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/2
+- **Reviewer:** OpenCode, read-only re-review requested by the user
+- **Reviewed head:** `f4be027ebbc43c3226c63209b743cf7482711556`
+- **Previous reviewed head:** `0448de2b0e7ff1aa06f1ed2a61f91dca292a81db`
+- **Base:** `main`
+- **Date:** 2026-11-22
+- **Scope:** Re-review of the tests-only corrections for FR-D, NFR-D, INV-D and
+  GOV-01. No application implementation is included.
+
+### Re-review result
+
+The previous implementation/test findings are resolved within the approved
+tests-first scope:
+
+1. A positive team-mode graph case now verifies valid evidence, the actual
+   preceding-trading-day snapshot, an allowed rating and an empty reason list in
+   `test/offline/test_graph_end_to_end.py:158-176`.
+2. CLI forwarding is covered from command invocation through
+   `TradingAgentsGraph` construction in `test/offline/test_eligibility.py:162-215`,
+   including the standard-mode control and the `team` value.
+3. Candidate-rating leakage is covered both at the real graph stream boundary in
+   `test/offline/test_graph_end_to_end.py:228-255` and at the CLI live-display
+   boundary in `test/offline/test_eligibility.py:218-307`.
+4. The negative matrix now pairs candidate `Buy` independently with all 16
+   analyst, evidence, snapshot-date and analysis-date failure variants in
+   `test/offline/test_eligibility.py:53-83`.
+5. The verification record now distinguishes historical initial-PR facts from
+   the latest PR metadata and records the revised local validation in
+   `docs/verification/d-eligibility.md:90-127`.
+
+No new code-quality or test-design blocker was found in the revised tests-only
+change. The intentionally failing acceptance tests are appropriate for a
+tests-first contract because `src/tradingagents/enhancements/eligibility.py` and
+the coordinated graph/CLI integration have not yet been implemented.
+
+### Verification evidence
+
+- `.venv/bin/python -m pytest -q --tb=no --disable-warnings`: `36 failed, 1430
+  passed, 1 skipped, 1 deselected, 100 subtests passed`; all failures are in the
+  new D tests-first cases.
+- `.venv/bin/python scripts/check_governance.py --base main`: passed.
+- `.venv/bin/ruff check .`: passed.
+- `.venv/bin/python -m mypy scripts/check_governance.py`: passed.
+- `.venv/bin/python -m pip check`: passed.
+- `git diff --check`: passed.
+- Remote governance, same-PR reviews, clean-install and Ruff checks: passed.
+- Remote `tests (py3.13, America/New_York)` checks: failed only on the expected
+  unimplemented D acceptance cases.
+- The PR remains tests-only; no application stub, skip, expected-failure marker or
+  CI exclusion was added to hide the unimplemented behavior.
+
+### Decision
+
+**APPROVE.** The revised tests-only contract satisfies the findings from the
+previous review and is ready for the next tests-first workflow step. This approval
+is limited to the revised test contract and its supporting evidence. It is not an
+approval of application implementation, the proposed safety behavior, merge, or
+settlement integration.
+
+The repository still requires the documented independent non-D GitHub Comment
+review with the exact first line `Test-Plan-Approved: f4be027ebbc43c3226c63209b743cf7482711556`.
+The current GitHub PR has no submitted reviews, so this memo entry must not be
+used as a substitute for that human approval or represented as a GitHub approval.
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:
