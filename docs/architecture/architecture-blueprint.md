@@ -23,7 +23,9 @@ flowchart LR
 LLM narrative is advisory. Validated provider/evidence metadata and D's final
 rating govern published structured results. Actual application guardrails remain
 the upstream implementation until D is built and tested. INV-D is a target rule,
-not an initialized enforcement claim.
+not an initialized enforcement claim. ADR-002 proposes an explicit `team`
+decision mode and a deterministic graph node after the Portfolio Manager and
+before publication; `standard` mode preserves existing behavior.
 
 ## Components and integration
 

@@ -25,6 +25,73 @@ from the pending settlement/reflection queue. Reviews will distinguish candidate
 model ratings from the authoritative result. The feature test suite still needs
 independent approval before implementation; no feature results are claimed here.
 
+### D implementation-session blueprint and baseline (2026-11-22)
+
+The user approved the D module execution blueprint and then requested development
+to begin. Work is underway on the D test-first stage in the local `D` worktree;
+no application feature code is included. The local changes were staged as a
+tests-only draft, and the user subsequently submitted PR #2 at head
+`0448de2b0e7ff1aa06f1ed2a61f91dca292a81db`. The read-only review concluded
+`CHANGES REQUIRED`; review findings and remote check status are in
+`docs/review-memo.md`. The user directed us to address the test findings locally
+and provide commit/push commands, not to execute publication.
+The proposed `standard`/`team` mode, typed evidence status, reuse of the upstream
+10-calendar-day OHLCV freshness bound and review-notice behavior are recorded in
+[ADR-002](docs/architecture/adr/002-deterministic-eligibility-gate.md) and remain
+subject to independent test/safety review. The approved blueprint is not being
+treated as approval of these detailed acceptance tests.
+
+Pre-change baseline on the project `.venv` (Python 3.13.18): full pytest reported
+1427 passed, 1 skipped, 1 deselected; governance, Ruff, mypy for the governance
+script and pip dependency consistency checks passed. The skipped test requires
+the optional `langchain_aws` dependency; one live test was deselected. These are
+baseline results only, not D feature verification.
+
+The active session has not yet been exported or annotated. The reviewer approval
+of D's tests-only change, D implementation/build review, final verification,
+independent safety review and integration review remain pending. The actual
+tests-only red baseline is recorded in `docs/verification/d-eligibility.md`.
+Track the test contract in
+[`docs/testing/d-eligibility-test-plan.md`](docs/testing/d-eligibility-test-plan.md)
+and actual run records in
+[`docs/verification/d-eligibility.md`](docs/verification/d-eligibility.md).
+
+The initial tests-only draft included a pure status/date/rating matrix, CLI mode and
+review-message checks, report and settlement assertions, and team-mode graph
+conflict cases. The focused acceptance suite reports 32 expected failures and 2
+independent checks passed against the absent implementation; the two new graph
+team-mode integration tests also fail at the expected missing constructor
+contract. The prior offline regression suite passed with only these new
+acceptance cases excluded (1427 passed, 1 skipped, 2 deselected, 100 subtests).
+This is evidence that the tests detect missing behavior, not feature
+verification. The independent test review remains pending before application
+code.
+
+### PR #2 review-driven test revision (2026-11-22)
+
+The review requested a valid team-mode graph integration test, proof that the
+CLI selection reaches graph construction, a stream-path assertion that catches
+pre-gate candidate-rating exposure, and an independent `Buy` conflict case for
+each blocked analyst/evidence/date condition. These test corrections and the
+corresponding interface/test-plan entries are prepared locally. The new positive
+case checks the actual preceding trading day's snapshot date. The CLI mode test
+runs the command's real selection/configuration setup and intercepts graph
+construction before model/data initialization. Two stream checks verify that
+rejected PM candidate content does not escape through graph output or live CLI
+decision panels. A fixed-width plain console corrected an unrelated terminal-wrap
+false failure while retaining the required report text assertions.
+
+The full revised suite reported 1430 passed, 36 failed, 1 skipped, 1 deselected,
+and 100 subtests passed. The 36 failures are all D's acceptance cases against
+unimplemented behavior, including an observed live-panel candidate leak; the
+prior offline regression suite passed in the same run. Governance, Ruff, mypy
+and pip consistency checks passed. Fresh read-only GitHub metadata still shows
+PR #2 ready, with no reviews; the test failures belong to its previous published
+head, not this uncommitted revision. The original review was preserved, and the
+user will commit/push these changes and return the PR to draft. No application feature code is included;
+independent non-D approval of the revised tests remains required before
+implementation.
+
 ## Architecture and integration
 
 Explain alternatives, ADD iterations, boundaries, interface decisions and the

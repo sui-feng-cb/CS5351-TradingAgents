@@ -80,26 +80,26 @@ requirements:
     type: functional
     owner: D
     status: planned
-    statement: Publish REVIEW with reason codes if critical market evidence is missing, unavailable, not run or future-dated, or if the rating is invalid, regardless of model narrative.
+    statement: In explicit team decision mode, require the market analyst and publish REVIEW with machine-readable and user-visible reasons if its execution failed/not run, trusted critical market evidence is missing/unavailable/invalid/stale/future-dated, or the final rating is outside the five allowed values, regardless of model narrative.
     priority: Must
     tradeoff: Only approved critical evidence blocks; optional sources follow explicit degradation policy.
     source: project-requirements section 4
     fit_criterion:
-      metric: eligible and ineligible fixtures correctly reflected in structured result, CLI and report
+      metric: each approved eligible/ineligible fixture has the correct authoritative rating and ordered reasons in structured result, CLI, Markdown and HTML
       threshold: 100%
-      verification: "test/offline/test_eligibility.py (planned): model Buy conflicts with unavailable evidence"
+      verification: "test/offline/test_eligibility.py (test plan pending independent review): pure gate cases, model Buy conflicts with invalid evidence, graph/CLI/report/state and settlement integration"
   - id: NFR-D
     type: security
     owner: D
     status: planned
-    statement: The deterministic eligibility boundary cannot be bypassed by model text or a secondary output adapter.
+    statement: The deterministic team-mode eligibility boundary cannot be bypassed by model text, missing or malformed evidence metadata, or a secondary output adapter; REVIEW decisions are excluded from pending settlement/reflection.
     priority: Must
     tradeoff: REVIEW replaces actionable output under uncertainty.
     source: project-requirements section 5
     fit_criterion:
-      metric: gate bypasses in approved negative fixtures
+      metric: actionable final ratings or REVIEW-to-settlement entries in the fixed approved negative fixtures
       threshold: zero
-      verification: test/offline/test_eligibility.py (planned), safety-path PR review and ADR
+      verification: test/offline/test_eligibility.py (test plan pending independent review), full offline regression, safety-path PR review and ADR-002
   - id: BASE-01
     type: invariant
     owner: team
