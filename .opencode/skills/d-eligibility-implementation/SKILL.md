@@ -52,9 +52,10 @@ Observed local checks on Python 3.13.18:
 ## Review and session boundaries
 
 No commit, push, remote CI or independent safety/integration approval is claimed.
-The original same-PR review validator remains unchanged despite PR #2's prior
-merge; the next PR must account for genuine test-review evidence. Do not invent
-approvals or relax the validator to make a check pass.
+The governance decision in ADR-003 makes same-PR test review advisory; do not
+claim that review occurred unless supported by actual GitHub/session evidence.
+Human plan/test approval, independent final review, and the safety-specific
+current-head review remain separate requirements.
 
 AGENTS.md's old build-status wording could not be refreshed because the tool
 denied that edit. Keep it as an explicit human follow-up without bypassing file

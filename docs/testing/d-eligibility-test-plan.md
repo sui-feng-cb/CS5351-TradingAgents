@@ -123,6 +123,12 @@ read-only GitHub metadata. Finding 1 remains pending: return the PR to draft and
 obtain the required independent human Comment review of the revised tests-only
 commit. The local memo is not a GitHub test-plan approval.
 
+Policy note: the preceding statements record the status and expectations at the
+time of that test-plan correction. ADR-003 subsequently made same-PR GitHub
+test-plan review advisory; no retrospective approval is required. Human approval
+of the plan/test intent and independent final/safety review remain governed by
+the current project rules.
+
 The final revised full run (`.venv/bin/python -m pytest -q --tb=no --disable-warnings`)
 reported **36 failed, 1430 passed, 1 skipped, 1 deselected, 100 subtests passed**.
 Every failure is in D's tests-first cases; the prior offline suite passed in the

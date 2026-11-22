@@ -1,5 +1,16 @@
 schema_version: 1
 entries:
+  - id: GOV-SAME-PR-OPTIONAL-001
+    scope: make-same-pr-test-review-advisory-and-preserve-safety-review-gate
+    agent: OpenCode
+    requirements: [GOV-01, QUA-01, INV-D]
+    user_direction: "用户授权执行已提交的 same-PR 测试评审门禁调整方案。"
+    human_approval: "用户明确授权执行方案；方案区分可选的 same-PR 测试评审与仍需的计划/测试人工批准、独立最终评审及安全评审。"
+    publication_direction: "不提交或推送；已按方案尝试只读查询远端保护设置，GitHub API 返回 HTTP 403，未读取到或修改任何远端配置。"
+    files: [.github/PULL_REQUEST_TEMPLATE.md, .github/workflows/project-governance.yml, .github/workflows/project-pr-reviews.yml, .github/workflows/project-safety-reviews.yml, scripts/check_governance.py, scripts/check_github_test_approvals.py, scripts/check_github_safety_reviews.py, test/offline/test_governance_gates.py, docs/architecture/adr/003-advisory-test-first-review.md, docs/architecture/trace-matrix.md, docs/req/requirements.yaml, docs/testing/test-approval-process.md, docs/testing/d-eligibility-test-plan.md, docs/code-governance/verification-constraints.md, docs/reference/project-requirements.md, docs/verification/github-flow.md, docs/verification/d-eligibility.md, docs/debt-register.md, docs/ai-use-log.yaml, README.md, .opencode/skills/github-flow-test-review/SKILL.md, .opencode/skills/d-eligibility-implementation/SKILL.md, .opencode/skills/pr3-eligibility-fixes/SKILL.md, .opencode/skills/pr2-test-corrections/SKILL.md]
+    transcript_status: "当前完整会话仍需通过 OpenCode TUI /export 导出并由人类注释；不得合成 transcript。"
+    validation: "Python 3.13.18: targeted governance tests 11 passed; full suite 1532 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed; governance, Ruff, mypy, pip check, YAML parsing and git diff --check passed. GitHub branch-protection/ruleset reads returned HTTP 403; remote settings unchanged. Details in docs/verification/github-flow.md."
+    feature_status: "Local implementation and verification complete; remote branch-protection rollout unresolved. No commit or push."
   - id: D-ELIG-PR3-FIX-002
     scope: pr3-re-review-markdown-rating-and-pr-link-fixes
     agent: OpenCode

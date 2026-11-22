@@ -5,15 +5,18 @@
 - Upstream baseline vs substantive team change:
 - Scope included / explicitly excluded:
 
-## Test plan approved before implementation
+## Test plan and test-first evidence
 
-- Same-PR test-plan review permalink and reviewed commit SHA:
-- Approved test paths, requirement IDs and positive/negative cases:
+- Human-approved plan/test intent and session reference:
+- Test paths, requirement IDs and positive/negative cases:
 - Baseline result for the representative failing case:
+- Optional same-PR test-plan review permalink and reviewed commit SHA:
 
-Start the feature PR as a draft with tests and documentation. Before committing
-application code, ask an independent reviewer to submit a GitHub **Comment**
-review starting with `Test-Plan-Approved: <full SHA>` followed by their rationale.
+Starting a draft PR with tests and documentation and obtaining an independent
+GitHub **Comment** review before implementation are recommended. The marker
+`Test-Plan-Approved: <full SHA>` may be used as supplementary evidence; its
+absence does not fail CI. Human approval of the plan/test intent before
+application implementation and independent final PR review remain required.
 
 ## Human supervision
 
