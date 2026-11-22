@@ -1,6 +1,7 @@
 # Runtime policies
 
-Status: proposed for enhancements; preserve upstream error handling meanwhile.
+Status: D policies have a local implementation under review; A–C policies remain
+proposed. Preserve upstream behavior in standard decision mode.
 
 | Trigger | Action | Evidence |
 |---|---|---|

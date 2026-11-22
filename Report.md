@@ -2,6 +2,51 @@
 
 Status: initialization draft, not the completed D6 submission.
 
+## D implementation and verification update — 2026-11-22
+
+The user confirmed that the revised tests-only PR #2 was squash-merged into main
+and D was updated. The user then approved the concrete implementation blueprint
+and requested uninterrupted implementation, D1–D9 records, local validation and
+staging, with commit/push left to manual commands. Earlier sections preserve the
+historical tests-first work and must not be read as current feature status.
+
+FR-D/NFR-D now have a local deterministic evaluator and team-mode graph integration.
+The graph acquires typed snapshot metadata independently of the market analyst,
+records actual analyst execution status, stages the Portfolio Manager candidate,
+and publishes only the qualification result as the final rating. Missing/invalid
+execution, evidence, date or rating produces `REVIEW` with stable ordered reasons.
+CLI streaming, completion output, Markdown/HTML reports and JSON state logs use
+that result; a rejected Trader action is withheld and a team `REVIEW` does not
+enter pending settlement/reflection. Standard remains the default; the team
+checkpoint identity is separate. No runtime dependency was added.
+
+Implementation verification exposed two presentation/publication defects first:
+the completion notice omitted `REVIEW`, and the blocked full report retained a
+Trader Buy proposal. Both were fixed. Full regression then found mode-attribute
+compatibility in bare graph fixtures, snapshot-call compatibility and two existing
+CLI fixtures whose exact flags needed the new literal default mode. The approved
+D acceptance tests were retained unchanged. A final inspection removed a temporary
+freshness-bypass option: stale loader exceptions carry only the actual snapshot
+date to the gate, while the existing price freshness guard continues to reject
+stale rows. Supplemental adapter checks cover those provenance and execution paths.
+
+The final full local run reported **1470 passed, 1 skipped, 1 deselected and
+100 subtests passed** on Python 3.13.18. The skip is the optional AWS dependency;
+the deselected test is live. The actual CI console pytest entry point also passed
+with identical counts in `America/New_York`. Ruff passed; governance, mypy for the governance
+script, pip consistency and diff checks are recorded with their actual scope in
+`docs/verification/d-eligibility.md`. The fixed tested negative set had zero
+observed bypasses; no universal safety claim or remote CI result is inferred.
+
+D1–D9 artifacts and real interventions are cross-linked from `D-ELIG-IMPL-001` in
+the AI-use log. The full active-session TUI export is still unavailable through
+the tool interface and must be performed by the user; annotations are separate
+and are not a substitute transcript. Independent safety, verification and
+integration reviews remain pending. AGENTS.md's obsolete build-status wording
+could not be refreshed because its edit was denied by the tool permission rules;
+that follow-up is recorded without modifying permissions. No new human review,
+identity, contribution score or completed export was invented.
+
 ## Team and contributions
 
 | Member | Name | Student ID | Effective contribution evidence | Relative weight |

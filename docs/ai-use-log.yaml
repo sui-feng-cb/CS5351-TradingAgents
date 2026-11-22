@@ -1,5 +1,18 @@
 schema_version: 1
 entries:
+  - id: D-ELIG-IMPL-001
+    scope: d-eligibility-implementation-and-local-verification
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01, GOV-01]
+    user_direction: "User confirmed PR #2 squash merge and updated main/D; approved the implementation blueprint and requested D1–D9 records, completed tests and staging, then manual commit/push commands."
+    human_approval: "Explicit blueprint approval and continuation in the active session; no independent safety, final verification or integration review is claimed."
+    publication_direction: "Stage only after local verification; do not commit or push."
+    files: [src/tradingagents/enhancements, src/tradingagents/graph, src/tradingagents/agents/state.py, src/tradingagents/dataflows/errors.py, src/tradingagents/dataflows/vendors/yahoo, src/tradingagents/reporting.py, src/tradingagents/report_html.py, src/cli, test/offline/test_eligibility_adapter.py, test/offline/test_cli_commands.py, test/offline/test_cli_headless.py, docs, README.md, Report.md, transcripts/annotations/d-implementation-2026-11-22.md, .opencode/skills/d-eligibility-implementation/SKILL.md]
+    fixed_acceptance_contract: "Merged PR #2 test_eligibility.py and test_graph_end_to_end.py unchanged."
+    transcript_status: "Active full-session TUI /export unavailable through tools; user export and cross-link pending."
+    human_annotations: transcripts/annotations/d-implementation-2026-11-22.md
+    validation: docs/verification/d-eligibility.md
+    feature_status: "Implemented locally; 1470 passed, 1 skipped, 1 deselected, 100 subtests passed; remote CI and independent reviews pending."
   - id: INIT-001
     scope: repository-initialization
     agent: OpenCode

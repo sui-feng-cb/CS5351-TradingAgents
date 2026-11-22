@@ -1,5 +1,33 @@
 # Significant bugs
 
+## BUG-D-001 — secondary proposal and completion notice obscured REVIEW
+
+- Requirements: FR-D, NFR-D, INV-D; ADR-002.
+- Reproduction: the first implementation run of `python -m pytest
+  test/offline/test_eligibility.py test/offline/test_graph_end_to_end.py -q`
+  reported 2 failed, 52 passed. The completion notice contained only "Review"
+  instead of the authoritative `REVIEW`; the complete report retained the
+  Trader's structured Buy action after gate rejection.
+- Root cause: the new gate changed the final PM fields, while two existing
+  presentation paths still presented upstream output semantics.
+- Fix: completion output explicitly shows `REVIEW` and reasons; rejected team
+  results clear the public Trader proposal and reports/CLI withhold it.
+- Evidence: original D assertions remained unchanged; focused run subsequently
+  passed all 54 cases, and full local regression later passed 1470 tests and
+  100 subtests. Remote CI and independent review pending.
+
+## BUG-D-002 — standard-path compatibility during team-mode integration
+
+- Requirements: BASE-01, FR-D; ADR-001/002.
+- The initial full implementation run had 25 failures: bare graph fixtures
+  lacked the new attribute, snapshot calls added an unnecessary keyword, and
+  two exact CLI flag dictionaries did not yet include the new default mode.
+- Fix: preserve standard defaults for old/bare instances and normal loader call
+  shape; add the literal `decision_mode: standard` to the two legacy CLI
+  expectations without removing existing assertions. The original D acceptance
+  files remain unchanged. A 208-test affected regression subset passed, followed
+  by full local regression. See the D verification log for actual commands.
+
 ## BUG-001 — CI pytest entry point cannot import governance scripts
 
 - Symptom: GitHub Actions fails during collection of

@@ -11,6 +11,8 @@ claim. Deterministic, no LLM involved.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Literal
 
 import pandas as pd
 from stockstats import wrap
@@ -26,6 +28,14 @@ DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = (
     "rsi", "boll", "boll_ub", "boll_lb",
     "macd", "macds", "macdh", "atr",
 )
+
+
+@dataclass(frozen=True)
+class VerifiedMarketEvidence:
+    """Typed provenance for the deterministic market snapshot (FR-D, INV-D)."""
+
+    status: Literal["valid"]
+    snapshot_date: str
 
 
 def _verified_rows(symbol: str, as_of_date: str) -> pd.DataFrame:
@@ -48,6 +58,27 @@ def _verified_rows(symbol: str, as_of_date: str) -> pd.DataFrame:
     if df.empty:
         raise NoMarketDataError(symbol, normalize_symbol(symbol), f"no price rows on or before {as_of_date}")
     return df
+
+
+def read_verified_market_evidence(symbol: str, as_of_date: str) -> VerifiedMarketEvidence:
+    """Return actual snapshot provenance without parsing model-visible text.
+
+    The row loader applies the same point-in-time and stale-data checks used by
+    the rendered market snapshot. Exceptions are left for the team-mode graph
+    adapter to classify as unavailable. (FR-D, ADR-002, INV-D)
+    """
+    try:
+        rows = _verified_rows(symbol, as_of_date)
+    except NoMarketDataError as exc:
+        if exc.snapshot_date is None:
+            raise
+        # The normal loader rejected these rows as stale. Only their actual date
+        # reaches the gate, which independently checks freshness before use.
+        return VerifiedMarketEvidence(status="valid", snapshot_date=exc.snapshot_date)
+    latest = pd.Timestamp(rows.iloc[-1]["Date"])
+    if pd.isna(latest):
+        raise NoMarketDataError(symbol, normalize_symbol(symbol), "latest row has no valid date")
+    return VerifiedMarketEvidence(status="valid", snapshot_date=latest.strftime("%Y-%m-%d"))
 
 
 def _fmt(value) -> str:

@@ -140,6 +140,7 @@ def _assert_ohlcv_not_stale(
             canonical,
             f"latest row is {latest.date()}, {stale_days} days before the "
             f"requested {requested.date()} (stale) — refusing to use it",
+            snapshot_date=latest.strftime("%Y-%m-%d"),
         )
 
 
@@ -255,5 +256,3 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     _assert_ohlcv_not_stale(data, as_of_date, symbol, canonical)
 
     return data
-
-

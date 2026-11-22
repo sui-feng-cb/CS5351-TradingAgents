@@ -11,6 +11,11 @@ structured rating before the graph publishes its final state; adapters may not
 re-derive a rating from candidate prose. The pure D evaluator belongs to
 `src/tradingagents/enhancements/eligibility.py`; coordinated graph, CLI, state,
 report and settlement integration remains subject to independent review.
+The local implementation adds typed snapshot provenance in the Yahoo snapshot
+module, a team-only graph evidence/gate path, CLI stream filtering, report
+metadata, state-log fields and exclusion of team-mode `REVIEW` from pending
+memory settlement. These additions do not replace upstream behavior in standard
+mode and remain under build/integration review.
 INV-B requires source metadata to be authoritative over model citations. The
 upstream layering regression remains mandatory; relocating tests must not make it
 silently inspect an empty directory. Interface and security changes need ADRs and

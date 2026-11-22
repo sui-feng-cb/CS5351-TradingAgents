@@ -21,6 +21,13 @@ Feature acceptance tests, mutation checks and performance results are not claime
 
 ## D eligibility-gate test approval target
 
+The user confirmed the fixed D tests-only contract was merged in PR #2 and
+approved implementation against it. The original D acceptance files remain
+unchanged. Current local implementation results, supplementary adapter tests,
+the two default-mode CLI fixture updates and outstanding independent reviews are
+recorded in `docs/verification/d-eligibility.md`. Local passing checks do not
+substitute for the final non-D safety review or remote CI.
+
 Before D application code, a non-D reviewer must approve the tests-only change as
 described in [the shared GitHub Flow](../testing/test-approval-process.md). The
 fixed negative matrix in `test/offline/test_eligibility.py` must include analyst

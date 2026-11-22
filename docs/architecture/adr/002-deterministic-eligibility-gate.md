@@ -1,6 +1,7 @@
 # ADR-002: deterministic team-mode decision eligibility gate
 
-- Status: proposed; requires non-D safety review and approved D acceptance tests.
+- Status: implemented and locally tested against the merged tests-only contract;
+  independent non-D safety review, remote CI and integration review remain required.
 - Requirements: FR-D, NFR-D.
 - Invariant: INV-D.
 
@@ -14,7 +15,7 @@ market data was not executed, unavailable, missing, future-dated or stale. The
 qualification boundary therefore needs deterministic evidence metadata and must
 run before a final graph state can reach the CLI, reports or decision log.
 
-## Decision proposal
+## Decision and implementation
 
 1. Add an explicit `standard` / `team` decision mode. `standard` is the default
    and preserves the upstream path. Python graph callers can select
@@ -37,13 +38,24 @@ run before a final graph state can reach the CLI, reports or decision log.
    output and state logs use the gate's final rating and reasons. Non-critical
    analyst omissions continue following the existing runtime policy.
 
+The implementation keeps the evaluator pure and places trusted market evidence
+acquisition in the graph using the existing cached OHLCV path. Snapshot date is
+read from actual rows, with the analysis-date cutoff applied before metadata is
+returned. The existing stale-data exception carries an optional typed
+`snapshot_date`, letting the gate distinguish a stale snapshot from unavailable
+data while the OHLCV loader still rejects stale prices. No freshness bypass is
+added to the loader. Team-mode Portfolio Manager output is held in
+candidate-only state keys until the gate writes public final fields. The CLI
+stream adapter withholds those candidate fields, and blocked reports omit the
+Trader's action proposal so it cannot appear as a secondary final call.
+
 ## Alternatives considered
 
 | Option | Assessment |
 |---|---|
 | Trust the market analyst's prose or ask another model to validate it | Rejected: model text cannot establish provider execution status or snapshot date. |
 | Parse status/date back out of model-visible tool output | Rejected: couples enforcement to rendered text and makes evidence authority ambiguous. |
-| Validate typed metadata with a deterministic graph node | Proposed: separates data provenance from narrative and places enforcement before publication. |
+| Validate typed metadata with a deterministic graph node | Implemented locally: separates data provenance from narrative and places enforcement before publication. |
 | Gate every upstream run by default | Rejected: silently changes existing callers and conflicts with the explicit team-mode boundary. |
 
 ## Consequences and boundaries
@@ -53,10 +65,11 @@ run before a final graph state can reach the CLI, reports or decision log.
 - The evidence adapter may use the existing cached OHLCV path; its test must
   prove that it does not accept rows beyond `trade_date` and that stale data
   follows the existing 10-day policy.
-- A failed market-analyst subgraph must not leave an actionable result. The
-  integration must either preserve other completed work with `REVIEW`, or fail
-  closed without publishing a rating; the accepted test contract will determine
-  the exact runtime failure representation.
+- A team-mode market-analyst subgraph wrapper records `failed` on an execution
+  exception and allows the remaining graph to reach `REVIEW`. A successful but
+  empty report also records `failed`. Missing execution metadata is not inferred
+  from report prose. Unexpected failures elsewhere propagate without publishing
+  a completed rating or creating a pending decision.
 - A `REVIEW` reason is machine-readable and user-visible. It must remain stable
   across CLI, Markdown, HTML and structured run-state output.
 - Offline tests mock data and model clients; no live provider call is part of
