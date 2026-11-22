@@ -1,5 +1,17 @@
 schema_version: 1
 entries:
+  - id: D-ELIG-PR3-FIX-002
+    scope: pr3-re-review-markdown-rating-and-pr-link-fixes
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "Apply the recorded re-review fixes, test, and provide manual commit/push commands."
+    reviewed_head: a99b017c7f65e7d0792b0b28dff20a9e136acc73
+    pull_request: 3
+    files: [src/tradingagents/agents/rating.py, src/tradingagents/graph/trading_graph.py, test/offline/test_team_rating.py, test/offline/test_graph_end_to_end.py, docs/architecture/adr/002-deterministic-eligibility-gate.md, docs/testing/d-eligibility-test-plan.md, docs/review-memo.md, docs/verification/d-eligibility.md, .opencode/skills/pr3-markdown-rating-fix/SKILL.md]
+    validation: docs/verification/d-eligibility.md
+    remote_action: "Corrected only the PR #2 URL in the existing PR #3 description; GitHub confirmed the replacement."
+    feature_status: "1528 passed, 1 skipped, 1 deselected and 100 subtests passed in both full local runs; new-head review pending."
+    transcript_status: "Active-session TUI export unavailable through tools; user export and cross-link pending."
   - id: D-ELIG-PR3-FIX-001
     scope: pr3-eligibility-review-corrections
     agent: OpenCode
@@ -134,4 +146,18 @@ entries:
     files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-eligibility-review/SKILL.md]
     validation: docs/review-memo.md
     feature_status: "Changes required after three reproduced behavioral findings. Local regression reported 1470 passed, 1 skipped, 1 deselected and 100 subtests passed."
+    transcript_status: "Active-session TUI export is unavailable in the tool interface. User export and cross-link pending."
+  - id: REVIEW-PR3-002
+    scope: re-review-of-pr-3-eligibility-corrections
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "Re-review the updated PR #3 for approval."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    base_sha: b5e6663c790b244b099051aee46549e1a9e51069
+    previous_head_sha: a8d60b660251b83c886bbf00b30ddd75f83bf528
+    head_sha: a99b017c7f65e7d0792b0b28dff20a9e136acc73
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-eligibility-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "Changes required. The prior reproductions are covered by passing tests. Two Markdown code-block examples still produced Buy and one pending entry each. Local regression reported 1512 passed, 1 skipped, 1 deselected and 100 subtests passed."
     transcript_status: "Active-session TUI export is unavailable in the tool interface. User export and cross-link pending."

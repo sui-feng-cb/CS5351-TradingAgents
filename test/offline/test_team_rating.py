@@ -23,3 +23,24 @@ def test_team_rejects_invalid_missing_or_conflicting_own_rating_even_with_consen
     from tradingagents.agents.rating import parse_team_rating
 
     assert parse_team_rating(own_text + "\n\nConsensus rating: Buy") == "REVIEW"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("text, expected", [
+    pytest.param("    Rating: Buy", "REVIEW", id="indented-code"),
+    pytest.param("\tRating: Buy", "REVIEW", id="tab-indented-code"),
+    pytest.param("~~~text\n```\nRating: Buy\n~~~", "REVIEW", id="mixed-fence"),
+    pytest.param("````text\n```\nRating: Buy\n````", "REVIEW", id="short-closer"),
+    pytest.param("~~~\n~~~text\nRating: Buy\n~~~", "REVIEW", id="closer-with-text"),
+    pytest.param("```\nRating: Buy\n```", "REVIEW", id="ordinary-fence"),
+    pytest.param("- Example:\n\n      Rating: Buy", "REVIEW", id="list-indented-code"),
+    pytest.param("`Example\nRating: Buy\nEnd`", "REVIEW", id="multiline-code-span"),
+    pytest.param("<!--\nRating: Buy\n-->", "REVIEW", id="html-comment"),
+    pytest.param("~~~text\n```\nRating: Buy\n~~~~\n\n- **Rating**: **Hold**", "Hold", id="real-rating-after-longer-closer"),
+    pytest.param("    Rating: Buy\n\n## Final Rating: Hold", "Hold", id="real-rating-after-indented-code"),
+])
+def test_team_only_uses_rating_fields_outside_markdown_code(text, expected):
+    """FR-D/INV-D: a Markdown example is not the PM's own rating."""
+    from tradingagents.agents.rating import parse_team_rating
+
+    assert parse_team_rating(text) == expected

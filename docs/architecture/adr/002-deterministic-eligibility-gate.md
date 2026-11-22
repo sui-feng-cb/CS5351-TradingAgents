@@ -81,6 +81,14 @@ rating vocabulary, 10-day freshness limit or reason ordering. Regression tests
 first reproduced the review failures; current results and the independent-review
 boundary are recorded in `docs/verification/d-eligibility.md`.
 
+The PR #3 re-review found that code examples could still be mistaken for own
+ratings. Team free-text parsing now uses the existing CommonMark parser to read
+paragraphs, headings and direct blocks in top-level list items. Indented and
+fenced code, block quotes and HTML blocks cannot supply a rating field. CommonMark
+handles fence character, length and closing syntax. Team checkpoint policy v3
+forces fresh qualification instead of reusing candidates parsed under v1 or v2;
+standard parsing and checkpoint identity are preserved.
+
 ## Alternatives considered
 
 | Option | Assessment |

@@ -162,6 +162,8 @@ test-plan approval is claimed for this local revision.
 | Every rejected team stream frame | No Trader proposal or internal PM candidate keys escape |
 | Eligible team stream | Trader proposal appears only after eligibility_checked=True and eligible status |
 | SQLite checkpoint created with pre-fix team signature and a staged Buy | Start fresh; unavailable evidence produces REVIEW and zero pending entries |
+| Team free-text graph receives an indented or mixed-fence code example with `Rating: Buy`, and no own field | Valid evidence does not rescue the candidate: REVIEW with `invalid_rating` and zero pending entries |
+| Team free-text graph receives a real `Hold` field after a correctly closed code block | Hold with no eligibility reasons and one matching pending entry |
 | Five exact own ratings in plain/list/heading Markdown plus consensus quotation | Preserve the exact own value |
 | Lowercase/uppercase/extra prose, missing or conflicting own fields, quote-only rating and scale legend | REVIEW, even with consensus Buy |
 

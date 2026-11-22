@@ -5,7 +5,34 @@ passed. PR #3 review found three bypasses in the initial implementation; the
 corrections below pass local regression but await corrected-head CI and independent
 re-review. Earlier sections preserve the original implementation/tests-first evidence.
 
-## PR #3 correction session — 2026-11-22
+## PR #3 re-review repairs
+
+The user directed repairs for the findings recorded at `a99b017` (FR-D, NFR-D,
+INV-D, BASE-01; ADR-002). Regression tests first reproduced the two Markdown
+code-block cases with valid evidence and a free-text PM. The pre-fix targeted
+run using `-k 'markdown_code or markdown_examples or pre_fix'` reported 12
+failed, 3 passed and 55 deselected; failures also exposed incorrect fence-length
+handling and reuse of a v2 SQLite candidate. Two more parser cases cover a
+multiline code span and an HTML comment. Team parsing now uses CommonMark block
+structure, and the team checkpoint policy is v3. Standard behavior is unchanged.
+
+| Command | Result |
+|---|---|
+| `.venv/bin/python -m pytest test/offline/test_team_rating.py test/offline/test_graph_end_to_end.py -q --tb=short --disable-warnings` | 72 passed. |
+| `.venv/bin/python -m pytest -q --tb=short --disable-warnings` | 1528 passed, 1 skipped, 1 deselected, 100 subtests passed (24 warnings). |
+| `TZ=America/New_York .venv/bin/pytest -q --tb=short --disable-warnings` | Same counts using the CI entry point. |
+| `.venv/bin/python -m ruff check .` | Passed. |
+| `.venv/bin/python -m mypy scripts/check_governance.py` and `.venv/bin/python -m pip check` | Passed. |
+| `.venv/bin/python scripts/check_governance.py --base main` | Passed local registry, layout, permission, basic credential scan, and committed-ref checks. |
+
+The remote PR #3 description was edited only to replace the mistyped PR #2 URL.
+The GitHub response confirmed the corrected link is present and the old link is
+absent. The correction has not been committed or pushed by the agent. The new
+head still requires CI and re-review. Full active-session export is unavailable
+through the tool interface; use TUI `/export` and link the real export to
+`D-ELIG-PR3-FIX-002` after saving it.
+
+## Historical PR #3 correction session — 2026-11-22
 
 User direction: read the PR #3 findings already in `docs/review-memo.md`, repair
 code, test, stage and return manual commit/push commands and template PR text.

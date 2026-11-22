@@ -17,6 +17,10 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterator
+
+from markdown_it import MarkdownIt
+from markdown_it.tree import SyntaxTreeNode
 
 # Canonical, ordered 5-tier scale (most bullish to most bearish).
 RATINGS_5_TIER: tuple[str, ...] = (
@@ -108,6 +112,27 @@ _TEAM_RATING_LINE_RE = re.compile(
     + r"rating\b[\s*_]*[:\-\u2010-\u2015]\s*(?P<value>.*?)\s*",
     re.IGNORECASE,
 )
+_TEAM_RATING_MARKDOWN = MarkdownIt("commonmark")
+
+
+def _team_rating_lines(text: str) -> Iterator[str]:
+    """Yield candidate fields from ordinary Markdown blocks (ADR-002, INV-D)."""
+    root = SyntaxTreeNode(_TEAM_RATING_MARKDOWN.parse(text))
+    for outer in root.children:
+        blocks = (
+            (block for item in outer.children for block in item.children)
+            if outer.type in {"bullet_list", "ordered_list"}
+            else (outer,)
+        )
+        for block in blocks:
+            if block.type not in {"paragraph", "heading"}:
+                continue
+            inline = block.children[0]
+            # A source newline swallowed by an inline construct (e.g. a multiline
+            # code span) is not a visible line boundary for a rating field.
+            line_breaks = sum(child.type in {"softbreak", "hardbreak"} for child in inline.children)
+            if line_breaks == inline.content.count("\n"):
+                yield from inline.content.split("\n")
 
 
 def parse_team_rating(text: str) -> str:
@@ -115,18 +140,13 @@ def parse_team_rating(text: str) -> str:
 
     Markdown wrappers are presentation only. Values are case-sensitive and must
     occupy the entire field; consensus labels never supply a missing own rating.
-    Every own field must be valid and agree. Standard parse_rating is unchanged.
+    Code blocks and quotations do not supply own fields. Every own field must be
+    valid and agree. Standard parse_rating is unchanged.
     """
     if not isinstance(text, str):
         return RATING_REVIEW
     own = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith(("```", "~~~")):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for line in _team_rating_lines(text):
         match = _TEAM_RATING_LINE_RE.fullmatch(line)
         if match is None:
             continue

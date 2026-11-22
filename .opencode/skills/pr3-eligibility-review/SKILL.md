@@ -46,3 +46,21 @@ The three observed behaviors require correction and independent regression
 coverage. This tool interface cannot export the active TUI session. Use the
 OpenCode `/export` command to preserve it under `transcripts/raw/` and link
 the actual file in the AI-use log after export.
+
+## Re-review of a99b017
+
+The re-review of `a99b017c7f65e7d0792b0b28dff20a9e136acc73` is indexed by
+`REVIEW-PR3-002`. The corrected price, stream and checkpoint cases and the
+original free-text consensus case passed. The full regression gave 1512 passes,
+1 skip, 1 deselection and 100 subtest passes. The focused team and typed evidence
+selection gave 46 passes and 19 deselections. Governance, Ruff, mypy, pip and
+the correction commit whitespace check passed.
+
+When verifying free-text ownership, include a response whose only rating line
+is in a four-space indented code block or in a tilde fence containing backticks.
+Confirm that CommonMark parses the lines as code before running the offline
+graph with fresh evidence and the unstructured scripted model. Both cases
+published `Buy` and queued one pending entry on this head. A plain fenced code
+control returned `REVIEW` with no pending entry. A real exact rating control
+returned `Buy`. Use the negative examples to check that the revised parser
+rejects code blocks with `invalid_rating` and leaves settlement empty.

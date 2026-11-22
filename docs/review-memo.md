@@ -207,6 +207,45 @@ are indexed separately from the current correction session, whose complete TUI
 export remains pending; no export or approval is fabricated. No remote review,
 PR edit, push or merge was performed by this correction task.
 
+## PR #3 复审 · 2026-11-22
+
+- 审查人 OpenCode。范围为 FR-D、NFR-D、INV-D、BASE-01 和 ADR-002。 [PR #3](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/3)
+- 基线 `b5e6663c790b244b099051aee46549e1a9e51069`，上轮提交 `a8d60b660251b83c886bbf00b30ddd75f83bf528`，本轮提交 `a99b017c7f65e7d0792b0b28dff20a9e136acc73`。
+
+### 上轮问题复验
+
+- 真实 OHLCV 加载器路径上的正负无穷收盘价均得到 `REVIEW`，没有待结算条目。正常收盘价的对照仍输出 `Buy`。
+- `Strong Buy` 或缺少自身评级的输出，即使引用 `Consensus rating: Buy`，在 `team` 模式也得到 `REVIEW` 和 `invalid_rating`。`standard` 对照仍使用上游兼容解析。
+- 公开图流在证据不可用时逐帧隐藏 Trader 提案，在资格通过后才发布提案。SQLite 回归也验证了新版不会沿用旧检查点的未校验候选评级。
+
+### 本轮发现
+
+1. **P1 — Markdown 代码示例仍可被当作 Portfolio Manager 自己的评级。** 当输出没有自身评级、只在四空格缩进的代码块里示例 `Rating: Buy` 时，正则允许前导空白并把它识别为评级。围栏实现也只切换布尔状态，外层波浪号围栏内的反引号行会被误当作结束标记。用 CommonMark 确认两种输入均是代码块后，以有效行情和非结构化模型走完整离线图。两例都发布了权威 `Buy`，理由为空，并各生成 1 条待结算记录。普通围栏示例的对照返回 `REVIEW`，真实评级行的对照继续通过。请将评级提取限制在可作为正式评级的字段，排除缩进代码块并按围栏字符和长度识别闭合。两种负例均应返回 `REVIEW` 和 `invalid_rating`，且待结算条目为零。 [评级解析器](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/a99b017c7f65e7d0792b0b28dff20a9e136acc73/src/tradingagents/agents/rating.py#L106)
+2. **P2 — 远端 PR 描述的仓库链接仍有笔误。** 作者修复记录称 PR 描述已更正。`gh pr view` 读到的远端描述仍将 PR #2 链接指向 `CS5531-TradingAgents`，请更新为正确的仓库地址。 [PR #3](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/3) · [正确的 PR #2 链接](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/2)
+
+### 验证结果
+
+- `gh pr checkout 3 --repo sui-feng-cb/CS5351-TradingAgents --detach` 拉取并确认了本轮提交。`gh pr checks 3 -R sui-feng-cb/CS5351-TradingAgents` 显示测试、治理、Ruff 与干净安装通过。按委托，`same-PR reviews` 不计入结论。该任务日志报告缺少实现前的独立测试评审记录。 [CI](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45022313068) · [评审任务](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45022313094/job/137207717515)
+- Python 3.13.18 下使用 `TZ=America/New_York .venv/bin/python -m pytest -q --tb=short --disable-warnings` 得到 1512 项通过、1 项跳过、1 项未选中、100 个子测试通过。对 `test_team_rating.py`、`test_eligibility_adapter.py`、`test_graph_end_to_end.py` 使用 `-k 'team or typed'` 得到 46 项通过、19 项未选中。
+- 以 PR 基线运行 `.venv/bin/python scripts/check_governance.py --base b5e6663c790b244b099051aee46549e1a9e51069` 通过。全仓 Ruff、治理脚本 mypy、`pip check` 和本轮提交差异的 `git diff --check` 均通过。
+
+### 决定
+
+**CHANGES REQUIRED**。上轮的具体复现均已解决，代码示例仍可产生权威 `Buy` 并进入待结算队列，违反 FR-D 和 INV-D。请修复这一评级来源问题并补充完整图回归。
+
+## PR #3 re-review repair response
+
+The user requested fixes for the findings at `a99b017`. The team parser now uses
+CommonMark block structure instead of toggling a fence flag. Both reported
+code-only inputs return `REVIEW` with `invalid_rating` and zero pending entries
+in the full offline graph; an actual `Hold` after a closed example still qualifies.
+Team checkpoint policy v3 also prevents reuse of candidates from the old parser.
+
+The remote PR #3 description's PR #2 URL was corrected in place. GitHub returned
+the correct `CS5351-TradingAgents` link and confirmed the old URL is absent.
+Local verification is recorded in `docs/verification/d-eligibility.md`. This
+author response does not replace the recorded re-review verdict.
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:
