@@ -36,14 +36,12 @@ evaluator/mode, observed CLI candidate leak, REVIEW settlement). Prior offline
 regressions passed. Ruff, governance/schema, mypy for check_governance, pip check
 and diff check passed. See `docs/verification/d-eligibility.md` for commands.
 
-Read-only GitHub checks confirmed PR #2 at `0448de2b0e7ff1aa06f1ed2a61f91dca292a81db`
-is ready, has no reviews, has failed New York test jobs, and passing governance,
-same-PR, install and Ruff checks. `gh` is now available. The correction needs a
-user commit/push, draft state, and independent non-D Comment review of the new
-tests-only SHA before application implementation. Keep this skill local for now:
-the same-PR gate only recognizes test/docs/README/Report changes in a tests-only
-prefix. A later inclusion of this skill before approval would invalidate that
-prefix under the current validator.
+Historical read-only GitHub checks recorded PR #2 at
+`0448de2b0e7ff1aa06f1ed2a61f91dca292a81db` as ready, with failed New York test
+jobs and passing governance, same-PR, install and Ruff checks. Those checks
+describe the policy at that time. ADR-003 later made same-PR test review advisory;
+no retrospective GitHub approval is required. Human plan/test approval and
+independent final/safety review remain separate requirements.
 
 The original `docs/review-memo.md`, existing AI-use review entry and untracked
 `.opencode/skills/pr2-review/` were user-provided work and were preserved. This

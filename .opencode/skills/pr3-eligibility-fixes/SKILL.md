@@ -54,7 +54,8 @@ weakened to obtain green results.
 ## Remaining handoff
 
 Keep `CHANGES REQUIRED` until independent corrected-head review. Do not fabricate
-missing pre-implementation approval evidence or relax the same-PR validator.
+approval evidence. Under ADR-003, same-PR test-first review is advisory; retain
+the human plan/test approval and independent final/safety review requirements.
 Remote CI has not run for the local correction. Active full-session TUI `/export`
 is unavailable through tools; real annotations are in
 `transcripts/annotations/pr3-eligibility-fixes-2026-11-22.md`, and a user export

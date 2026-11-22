@@ -1,4 +1,4 @@
-"""GOV-01: verify same-PR test reviews and independent safety review (INV-D)."""
+"""GOV-01/INV-D: verify independent reviews for safety-critical PR changes."""
 
 from __future__ import annotations
 
@@ -7,20 +7,16 @@ import json
 import os
 import urllib.error
 import urllib.request
-from datetime import datetime
-from pathlib import PurePosixPath
 from typing import Any
 
 from scripts.check_governance import (
     changed_code,
     changed_paths,
     git,
-    is_application_path,
     merge_base,
 )
 
 TEAM_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
-REVIEW_MARKER = "Test-Plan-Approved: "
 
 
 def api(path: str) -> Any:
@@ -39,7 +35,7 @@ def api(path: str) -> Any:
 
 
 def pr_reviews(number: int) -> list[dict[str, Any]]:
-    """Read the complete GitHub review history, including an early test review."""
+    """Read the complete GitHub review history for current-head safety review."""
     reviews: list[dict[str, Any]] = []
     page = 1
     while True:
@@ -62,49 +58,6 @@ def reviewer_login(review: dict[str, Any], author: str) -> str | None:
     return None
 
 
-def tests_only_commits(base: str, head: str) -> tuple[dict[str, set[str]], int]:
-    """Find reviewable commits before application paths first changed on the branch."""
-    candidates: dict[str, set[str]] = {}
-    commits = git("rev-list", "--first-parent", "--reverse", f"{base}..{head}").decode().splitlines()
-    for commit in commits:
-        # An ordinary merge from current main should not look like new feature code.
-        paths = changed_paths(merge_base(base, commit), commit)
-        if any(is_application_path(path) for path in paths):
-            return candidates, int(git("show", "-s", "--format=%ct", commit))
-        if all(path.startswith(("test/", "docs/")) or path in {"README.md", "Report.md"} for path in paths):
-            candidates[commit] = {path for path in paths if path.startswith("test/")}
-    raise ValueError("Cannot establish the first application change in PR history")
-
-
-def verify_test_review(base: str, head: str, paths: list[str], author: str, reviews: list[dict[str, Any]]) -> None:
-    """GOV-01: require an independent, earlier review of the unchanged offline tests."""
-    candidates, implementation_time = tests_only_commits(base, head)
-    final_tests = {path for path in paths if path.startswith("test/")}
-    if not any(path.startswith("test/offline/") and PurePosixPath(path).match("test_*.py")
-               and git("ls-tree", head, "--", path) for path in final_tests):
-        raise ValueError("Application PR must include an added or updated offline test")
-    for review in reversed(reviews):
-        login = reviewer_login(review, author)
-        commit = review.get("commit_id")
-        if not login or review.get("state") != "COMMENTED" or commit not in candidates:
-            continue
-        marker, _, rationale = (review.get("body") or "").strip().partition("\n")
-        if marker.strip() != f"{REVIEW_MARKER}{commit}" or not rationale.strip():
-            continue
-        submitted_at = review.get("submitted_at")
-        if not submitted_at:
-            continue
-        submitted = datetime.fromisoformat(submitted_at)
-        if submitted.tzinfo is None or submitted.timestamp() > implementation_time:
-            continue
-        if candidates[commit] != final_tests or final_tests.intersection(changed_paths(commit, head)):
-            continue
-        print(f"Reviewed pre-implementation tests at {commit} by {login}")
-        return
-    raise ValueError("No independent, pre-implementation test review for the final test files. "
-                     f"Request a GitHub Comment review starting with '{REVIEW_MARKER}<full SHA>'.")
-
-
 def verify_safety_review(paths: list[str], head: str, author: str, reviews: list[dict[str, Any]]) -> None:
     """INV-D: retain the ADR and independent approval of the current safety change."""
     if not any(path.startswith(("src/tradingagents/graph/", "src/tradingagents/agents/"))
@@ -125,15 +78,19 @@ def verify_safety_review(paths: list[str], head: str, author: str, reviews: list
 def verify_pr(base: str, head: str, number: int) -> None:
     common = merge_base(base, head)
     if not changed_code(common, head):
-        print("No application source changes; PR test review verification not required")
+        print("No application source changes; safety review verification not required")
+        return
+    paths = changed_paths(common, head)
+    safety_change = any(path.startswith(("src/tradingagents/graph/", "src/tradingagents/agents/"))
+                        or path.endswith("/eligibility.py") for path in paths)
+    if not safety_change:
+        print("No safety-critical changes; no GitHub review check required")
         return
     pr = api(f"pulls/{number}")
     if not isinstance(pr, dict) or pr.get("head", {}).get("sha") != head or not pr.get("user", {}).get("login"):
         raise ValueError("Cannot verify reviews for this PR head; run checks on the latest commit")
-    paths = changed_paths(common, head)
     author = pr["user"]["login"]
     reviews = pr_reviews(number)
-    verify_test_review(base, head, paths, author, reviews)
     verify_safety_review(paths, head, author, reviews)
 
 

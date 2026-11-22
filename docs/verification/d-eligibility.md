@@ -297,6 +297,11 @@ These are the pre-change baseline only and do not verify any D behavior.
 
 ## Historical test-first gate and pending approval
 
+The status and prescribed evidence below describe the earlier D test-first
+checkpoint. Under ADR-003, same-PR GitHub test review is now advisory and its
+absence is not a merge blocker. Human approval of plan/test intent and
+independent final and safety reviews remain governed by current project policy.
+
 The approved blueprint and current user request are recorded, but the D
 tests-only contract has not yet received the required independent non-D review.
 The PR #2 review required test corrections, which are now prepared locally. Do

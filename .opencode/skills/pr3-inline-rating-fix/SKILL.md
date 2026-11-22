@@ -22,3 +22,19 @@ description: Verify PR 3 corrections for team rating fields beside multiline inl
 The final local runs recorded 80 focused passes and 1536 full passes, with one
 skip, one deselection and 100 subtests in each full run. See
 `docs/verification/d-eligibility.md` for commands, review scope and results.
+
+## Review of 9c53f95
+
+`REVIEW-PR3-004` in `docs/ai-use-log.yaml` records the follow-up review. The
+CommonMark source-break handling preserves visible rating fields around a
+multiline inline code span. In the full offline graph, `Strong Buy` followed by
+a later `Buy` returns `REVIEW` with `invalid_rating` and leaves settlement
+empty. A single valid `Hold` beside a multiline code example is accepted and
+recorded as Hold. Earlier evidence, graph-stream and recovery regressions pass.
+
+Validation on Python 3.13.18: 1536 full-suite passes, 1 skip, 1 deselection
+and 100 subtests. The focused multiline/code selection passed 19 tests with
+61 deselected. Governance, Ruff, mypy, pip and changed-source whitespace checks
+passed. GitHub tests, governance, Ruff and clean-install checks passed on this
+head. The approval-related `same-PR reviews` check is outside this code verdict;
+this memo is not a submitted GitHub review.
