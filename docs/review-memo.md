@@ -265,6 +265,24 @@ CommonMark 解析现在保留真实换行的源位置，并屏蔽行内代码消
 团队检查点升级至 v4，旧候选评级会重新计算。完整本地结果与远端 CI 重跑记录见
 [D 验证日志](verification/d-eligibility.md)。以上是本地修复证据，修复后的提交待独立复审。
 
+## PR #3 复审 · `9c53f95` · 2026-11-22
+
+- 审查范围 FR-D、NFR-D、INV-D、BASE-01 和 ADR-002。基线为
+  `b5e6663c790b244b099051aee46549e1a9e51069`，审查 head 为
+  `9c53f95fae53ed75a984568a4e0007fd06ed4764`。
+- **上一轮评级误判已修复。** 评级解析保留 CommonMark 可见换行的源位置，不再因跨行行内代码跳过整段。含冲突字段 `Rating: Strong Buy` 和后续 `Rating: Buy` 的完整离线图返回 `REVIEW`、`invalid_rating`，待结算记录为零。合法 `Rating: Hold` 与跨行代码示例并存时通过资格门，且只记录 `Hold`。
+- 已覆盖普通与反斜线硬换行、多行代码值、行内注释及代码块之后的正式评级。团队检查点升级至 v4，避免复用旧解析策略保存的候选结果。上轮非有限价格、共识评级回退和图流提案提前发布问题均未回归。PR 描述中的 PR #2 链接正确。
+
+### 验证结果
+
+- Python 3.13.18，全量离线套件 `TZ=America/New_York .venv/bin/python -m pytest -q --tb=short --disable-warnings`：1536 passed、1 skipped、1 deselected、100 subtests passed。聚焦命令 `TZ=America/New_York .venv/bin/python -m pytest -q --tb=short test/offline/test_team_rating.py test/offline/test_graph_end_to_end.py -k 'multiline or code'`：19 passed、61 deselected。
+- `.venv/bin/python scripts/check_governance.py --base b5e6663c790b244b099051aee46549e1a9e51069`、全仓 Ruff、`.venv/bin/python -m mypy scripts/check_governance.py`、`.venv/bin/python -m pip check`，以及源码、测试、文档变更的 `git diff --check` 均通过。
+- GitHub 对应 head 的 Python 3.13 测试、治理、Ruff 和干净安装检查均通过。按此前约定，`same-PR reviews` 失败不计入代码结论。GitHub 当前没有已提交的 review；本备忘录记录的是本地复审判断。
+
+### 决定
+
+**APPROVE**。上一轮发现已修复，新增加的评级来源与硬换行回归通过，FR-D/NFR-D/INV-D 范围内未发现其他阻塞问题。此结论限于上述 PR head 的代码复审。
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:

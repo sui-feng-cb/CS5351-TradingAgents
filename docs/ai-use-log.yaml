@@ -175,3 +175,17 @@ entries:
     transcript_status: Active-session TUI export pending
     human_annotations: transcripts/annotations/pr3-inline-rating-fix-2026-11-22.md
     reusable_skill: .opencode/skills/pr3-inline-rating-fix/SKILL.md
+  - id: REVIEW-PR3-004
+    scope: re-review-of-pr-3-multiline-inline-markdown-rating-fix
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "PR #3 updated; review again and approve if resolved."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    base_sha: b5e6663c790b244b099051aee46549e1a9e51069
+    previous_head_sha: 29ce124e3096e6ee4972bed0248a0df78e74d77d
+    head_sha: 9c53f95fae53ed75a984568a4e0007fd06ed4764
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-inline-rating-fix/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "APPROVE for this head after reproducing the corrected inline-code rating cases. Local full suite: 1536 passed, 1 skipped, 1 deselected, 100 subtests passed. Targeted multiline/code selection: 19 passed, 61 deselected."
+    transcript_status: "No active-session export was made. Existing untracked root-level session-ses_dfce.md was left untouched and is not claimed as this review's export."
