@@ -29,13 +29,12 @@ independent approval before implementation; no feature results are claimed here.
 
 The user approved the D module execution blueprint and then requested development
 to begin. Work is underway on the D test-first stage in the local `D` worktree;
-no application feature code or remote synchronization has occurred. The user
-subsequently authorized a tests-only commit, non-force push to `origin/D` and
-draft PR for independent test review. The user later confirmed that remote D was
-removed; a read-only ref check found only `origin/main`. The local commit command
-was blocked by the execution environment, so no commit, push or PR is claimed.
-The tests-only changes remain staged; details are in
-`docs/verification/d-eligibility.md`.
+no application feature code is included. The local changes were staged as a
+tests-only draft, and the user subsequently submitted PR #2 at head
+`0448de2b0e7ff1aa06f1ed2a61f91dca292a81db`. The read-only review concluded
+`CHANGES REQUIRED`; review findings and remote check status are in
+`docs/review-memo.md`. The user directed us to address the test findings locally
+and provide commit/push commands, not to execute publication.
 The proposed `standard`/`team` mode, typed evidence status, reuse of the upstream
 10-calendar-day OHLCV freshness bound and review-notice behavior are recorded in
 [ADR-002](docs/architecture/adr/002-deterministic-eligibility-gate.md) and remain
@@ -57,7 +56,7 @@ Track the test contract in
 and actual run records in
 [`docs/verification/d-eligibility.md`](docs/verification/d-eligibility.md).
 
-The tests-only draft now includes a pure status/date/rating matrix, CLI mode and
+The initial tests-only draft included a pure status/date/rating matrix, CLI mode and
 review-message checks, report and settlement assertions, and team-mode graph
 conflict cases. The focused acceptance suite reports 32 expected failures and 2
 independent checks passed against the absent implementation; the two new graph
@@ -67,6 +66,31 @@ acceptance cases excluded (1427 passed, 1 skipped, 2 deselected, 100 subtests).
 This is evidence that the tests detect missing behavior, not feature
 verification. The independent test review remains pending before application
 code.
+
+### PR #2 review-driven test revision (2026-11-22)
+
+The review requested a valid team-mode graph integration test, proof that the
+CLI selection reaches graph construction, a stream-path assertion that catches
+pre-gate candidate-rating exposure, and an independent `Buy` conflict case for
+each blocked analyst/evidence/date condition. These test corrections and the
+corresponding interface/test-plan entries are prepared locally. The new positive
+case checks the actual preceding trading day's snapshot date. The CLI mode test
+runs the command's real selection/configuration setup and intercepts graph
+construction before model/data initialization. Two stream checks verify that
+rejected PM candidate content does not escape through graph output or live CLI
+decision panels. A fixed-width plain console corrected an unrelated terminal-wrap
+false failure while retaining the required report text assertions.
+
+The full revised suite reported 1430 passed, 36 failed, 1 skipped, 1 deselected,
+and 100 subtests passed. The 36 failures are all D's acceptance cases against
+unimplemented behavior, including an observed live-panel candidate leak; the
+prior offline regression suite passed in the same run. Governance, Ruff, mypy
+and pip consistency checks passed. Fresh read-only GitHub metadata still shows
+PR #2 ready, with no reviews; the test failures belong to its previous published
+head, not this uncommitted revision. The original review was preserved, and the
+user will commit/push these changes and return the PR to draft. No application feature code is included;
+independent non-D approval of the revised tests remains required before
+implementation.
 
 ## Architecture and integration
 

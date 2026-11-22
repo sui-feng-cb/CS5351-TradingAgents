@@ -52,68 +52,35 @@ def test_snapshot_exactly_ten_calendar_days_old_passes_existing_freshness_bound(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "analyst_status, expected_reason",
+    "field, value, expected_reason",
     [
-        ("not_run", "market_analyst_not_run"),
-        ("failed", "market_analyst_failed"),
-        ("unknown", "market_analyst_invalid_status"),
-        (None, "market_analyst_not_run"),
+        pytest.param("market_analyst_status", "not_run", "market_analyst_not_run", id="analyst-not-run"),
+        pytest.param("market_analyst_status", "failed", "market_analyst_failed", id="analyst-failed"),
+        pytest.param("market_analyst_status", "unknown", "market_analyst_invalid_status", id="analyst-unknown"),
+        pytest.param("market_analyst_status", None, "market_analyst_not_run", id="analyst-missing"),
+        pytest.param("market_evidence_status", None, "market_evidence_missing", id="evidence-missing"),
+        pytest.param("market_evidence_status", "not_run", "market_evidence_not_run", id="evidence-not-run"),
+        pytest.param("market_evidence_status", "unavailable", "market_evidence_unavailable", id="evidence-unavailable"),
+        pytest.param("market_evidence_status", "unknown", "market_evidence_invalid_status", id="evidence-unknown"),
+        pytest.param("snapshot_date", None, "market_snapshot_date_missing", id="snapshot-missing"),
+        pytest.param("snapshot_date", "2026-1-20", "market_snapshot_date_invalid", id="snapshot-noncanonical"),
+        pytest.param("snapshot_date", "2026-02-30", "market_snapshot_date_invalid", id="snapshot-impossible"),
+        pytest.param("snapshot_date", "2026-01-21", "market_snapshot_after_analysis", id="snapshot-future"),
+        pytest.param("snapshot_date", "2026-01-09", "market_snapshot_stale", id="snapshot-stale"),
+        pytest.param("analysis_date", "2026-1-20", "analysis_date_invalid", id="analysis-noncanonical"),
+        pytest.param("analysis_date", "2026-02-30", "analysis_date_invalid", id="analysis-impossible"),
+        pytest.param("analysis_date", "not-a-date", "analysis_date_invalid", id="analysis-malformed"),
     ],
 )
-def test_market_analyst_must_have_a_known_successful_execution(analyst_status, expected_reason):
-    decision = _evaluate(market_analyst_status=analyst_status)
+def test_candidate_buy_is_rejected_for_each_independent_gate_failure(field, value, expected_reason):
+    # Keep an otherwise valid date even for bad evidence status. A date alone
+    # cannot establish that the snapshot was obtained successfully.
+    decision = _evaluate(candidate_rating="Buy", **{field: value})
 
     assert decision.final_rating == RATING_REVIEW
     assert decision.eligible is False
     assert decision.reason_codes == (expected_reason,)
     assert "review" in decision.user_message.lower()
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "evidence_status, expected_reason",
-    [
-        (None, "market_evidence_missing"),
-        ("not_run", "market_evidence_not_run"),
-        ("unavailable", "market_evidence_unavailable"),
-        ("unknown", "market_evidence_invalid_status"),
-    ],
-)
-def test_missing_or_unusable_market_evidence_forces_review(evidence_status, expected_reason):
-    decision = _evaluate(market_evidence_status=evidence_status, snapshot_date=None)
-
-    assert decision.final_rating == RATING_REVIEW
-    assert decision.eligible is False
-    assert decision.reason_codes == (expected_reason,)
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "snapshot_date, expected_reason",
-    [
-        (None, "market_snapshot_date_missing"),
-        ("2026-1-20", "market_snapshot_date_invalid"),
-        ("2026-02-30", "market_snapshot_date_invalid"),
-        ("2026-01-21", "market_snapshot_after_analysis"),
-        ("2026-01-09", "market_snapshot_stale"),
-    ],
-)
-def test_invalid_or_future_market_snapshot_dates_force_review(snapshot_date, expected_reason):
-    decision = _evaluate(snapshot_date=snapshot_date)
-
-    assert decision.final_rating == RATING_REVIEW
-    assert decision.eligible is False
-    assert decision.reason_codes == (expected_reason,)
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("analysis_date", ["2026-1-20", "2026-02-30", "not-a-date"])
-def test_invalid_analysis_date_fails_closed(analysis_date):
-    decision = _evaluate(analysis_date=analysis_date)
-
-    assert decision.final_rating == RATING_REVIEW
-    assert decision.eligible is False
-    assert decision.reason_codes == ("analysis_date_invalid",)
 
 
 @pytest.mark.unit
@@ -192,14 +159,78 @@ def test_cli_exposes_team_decision_mode_without_changing_its_default(monkeypatch
 
 
 @pytest.mark.unit
+def test_cli_passes_team_mode_to_graph_constructor(monkeypatch, tmp_path):
+    from typer.testing import CliRunner
+
+    import cli.main as cli_main
+    import cli.run as cli_run
+    from cli import selections
+
+    for key, value in {
+        "OUTPUT_LANGUAGE": "English",
+        "MAX_DEBATE_ROUNDS": "1",
+        "MAX_RISK_ROUNDS": "1",
+        "LLM_PROVIDER": "openai",
+        "QUICK_THINK_LLM": "offline",
+        "DEEP_THINK_LLM": "offline",
+    }.items():
+        monkeypatch.setenv(f"TRADINGAGENTS_{key}", value)
+    config = {
+        **cli_run.DEFAULT_CONFIG,
+        "results_dir": str(tmp_path), "output_language": "English",
+        "llm_provider": "openai", "backend_url": None,
+        "quick_think_llm": "offline", "deep_think_llm": "offline",
+    }
+    monkeypatch.setattr(cli_run, "DEFAULT_CONFIG", config)
+    monkeypatch.setattr(selections, "DEFAULT_CONFIG", config)
+    monkeypatch.setattr(selections, "load_last_run", dict)
+    monkeypatch.setattr(selections, "save_last_run", lambda _selections: None)
+    monkeypatch.setattr(selections, "_check_tier_providers", lambda *_args: None)
+    monkeypatch.setattr(selections.updates, "enabled", lambda: False)
+    constructions = []
+
+    class GraphReached(Exception):
+        """End the test before model or data setup once the graph is constructed."""
+
+    def graph_factory(*_args, **kwargs):
+        constructions.append(kwargs)
+        raise GraphReached
+
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", graph_factory)
+
+    flags = [
+        "--ticker", "NVDA", "--date", ANALYSIS_DATE,
+        "--analysts", "market", "--no-save", "--no-show",
+    ]
+    runner = CliRunner()
+    standard = runner.invoke(cli_main.app, flags)
+    assert isinstance(standard.exception, GraphReached), standard.output
+    assert constructions[0].get("decision_mode", "standard") == "standard"
+    constructions.clear()
+
+    result = runner.invoke(cli_main.app, ["--decision-mode", "team", *flags])
+
+    assert isinstance(result.exception, GraphReached), result.output
+    assert [call.get("decision_mode") for call in constructions] == ["team"]
+
+
+@pytest.mark.unit
 def test_cli_run_prints_gate_reason_even_without_showing_full_report(monkeypatch, tmp_path):
+    from contextlib import nullcontext
     from types import SimpleNamespace
 
     import cli.run as cli_run
+    from cli.display import MessageBuffer
     from cli.models import AnalystType
 
     final_state = {
+        "decision_mode": "team",
         "market_report": "Market report.",
+        "risk_debate_state": {
+            "aggressive_history": "",
+            "conservative_history": "",
+            "neutral_history": "",
+        },
         "final_trade_decision": (
             "REVIEW (market_evidence_unavailable): critical market evidence is unavailable."
         ),
@@ -221,6 +252,18 @@ def test_cli_run_prints_gate_reason_even_without_showing_full_report(monkeypatch
             return state
 
         def stream_run(self, *_args, **_kwargs):
+            # The PM produces a candidate first. It is internal until the
+            # eligibility gate completes and must not reach the live display.
+            yield [], {
+                "decision_mode": "team",
+                "risk_debate_state": {
+                    "aggressive_history": "",
+                    "conservative_history": "",
+                    "neutral_history": "",
+                },
+                "final_rating": "Buy",
+                "final_trade_decision": "**Rating**: Buy\n\nCandidate only.",
+            }
             yield [], final_state
 
         def record_decision(self, *_args):
@@ -232,33 +275,8 @@ def test_cli_run_prints_gate_reason_even_without_showing_full_report(monkeypatch
         def end_checkpoint(self):
             pass
 
-    class _Buffer:
-        def __init__(self):
-            self.messages = []
-            self.tool_calls = []
-            self.report_sections = {}
-            self.selected_analysts = []
-            self.agent_status = {}
-            self._processed_message_ids = set()
-
-        def init_for_analysis(self, analysts):
-            self.selected_analysts = list(analysts)
-            self.agent_status = {"Market Analyst": "pending"}
-
-        def add_message(self, kind, content):
-            self.messages.append(("12:00:00", kind, content))
-
-        def add_tool_call(self, name, args):
-            self.tool_calls.append((name, args))
-
-        def update_report_section(self, name, content):
-            if name in self.report_sections:
-                self.report_sections[name] = content
-
-        def update_agent_status(self, name, status):
-            self.agent_status[name] = status
-
-    buffer = _Buffer()
+    buffer = MessageBuffer()
+    displayed_decisions = []
     printed = []
     monkeypatch.setattr(cli_run, "message_buffer", buffer)
     monkeypatch.setattr(cli_run, "get_user_selections", lambda _flags: {
@@ -270,19 +288,19 @@ def test_cli_run_prints_gate_reason_even_without_showing_full_report(monkeypatch
     })
     monkeypatch.setattr(cli_run, "TradingAgentsGraph", lambda *_args, **_kwargs: _Graph())
     monkeypatch.setattr(cli_run, "create_layout", lambda: object())
-    monkeypatch.setattr(cli_run, "update_display", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *_args, **_kwargs: displayed_decisions.append(
+        buffer.report_sections.get("final_trade_decision") or ""
+    ))
     monkeypatch.setattr(cli_run, "_offer_reports", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli_run.console, "print", lambda *args, **_kwargs: printed.append(" ".join(map(str, args))))
-    monkeypatch.setattr(cli_run, "Live", type("L", (), {
-        "__init__": lambda self, *_args, **_kwargs: None,
-        "__enter__": lambda self: self,
-        "__exit__": lambda self, *_args: False,
-    }))
+    monkeypatch.setattr(cli_run, "Live", lambda *_args, **_kwargs: nullcontext())
     monkeypatch.setattr(cli_run.sys, "stdin", SimpleNamespace(isatty=lambda: True))
 
-    cli_run.run_analysis(flags={"decision_mode": "team"})
+    cli_run.run_analysis(flags={"decision_mode": "team", "save": False, "show": False})
 
     output = "\n".join(printed)
+    assert all("Buy" not in decision for decision in displayed_decisions)
+    assert "REVIEW" in displayed_decisions[-1]
     assert "REVIEW" in output
     assert "market_evidence_unavailable" in output
     assert "critical market evidence is unavailable" in output
@@ -290,10 +308,13 @@ def test_cli_run_prints_gate_reason_even_without_showing_full_report(monkeypatch
 
 
 @pytest.mark.unit
-def test_cli_displays_gate_review_and_reasons_in_final_report(capsys):
-    from cli.display import display_complete_report
+def test_cli_displays_gate_review_and_reasons_in_final_report(monkeypatch, capsys):
+    from rich.console import Console
 
-    display_complete_report({
+    import cli.display as display
+
+    monkeypatch.setattr(display, "console", Console(width=120, color_system=None))
+    display.display_complete_report({
         "final_trade_decision": (
             "REVIEW (market_evidence_unavailable): critical market evidence is unavailable."
         ),
@@ -316,6 +337,7 @@ def test_review_decision_is_not_added_to_pending_settlement_or_reflection(tmp_pa
 
     memory = TradingMemoryLog({"memory_log_path": str(tmp_path / "memory.md")})
     graph = object.__new__(TradingAgentsGraph)
+    graph.decision_mode = "team"
     graph.memory_log = memory
     graph._log_state = lambda _trade_date, _state: None
 
@@ -323,7 +345,9 @@ def test_review_decision_is_not_added_to_pending_settlement_or_reflection(tmp_pa
         "NVDA",
         ANALYSIS_DATE,
         {
+            "decision_mode": "team",
             "final_rating": RATING_REVIEW,
+            "eligibility_reason_codes": ["market_evidence_unavailable"],
             "final_trade_decision": (
                 "REVIEW (market_evidence_unavailable): critical market evidence is unavailable."
             ),

@@ -57,20 +57,26 @@ without calling production helpers to construct expected values.
 | D-UNIT-07 | Rating absent, `REVIEW`, case-mismatched, extra prose or outside the exact allowlist | `REVIEW`; `invalid_rating` |
 | D-UNIT-08 | Analyst not run, evidence unavailable and candidate `Buy` simultaneously | `REVIEW`; all applicable reasons in fixed order |
 | D-UNIT-09 | The analyst report/narrative says `Buy` while evidence status is unavailable | Candidate narrative does not change `REVIEW` decision |
-| D-INT-01 | Team mode runs graph with valid evidence and allowed rating | Gate runs after PM and before final state; eligible rating is authoritative |
+| D-UNIT-10 | The D-UNIT-03–06 matrix explicitly pairs candidate `Buy` with one analyst, evidence or date failure at a time | Each of the 16 variants returns `REVIEW` and exactly its own reason code |
+| D-INT-01 | Team mode runs graph with valid evidence from the preceding trading day and a model rating of `Overweight` | Graph returns authoritative `Overweight`, completed/valid market statuses, the actual snapshot date, and an empty reason list |
 | D-INT-02 | Team mode has unavailable market evidence while the model returns `Buy` | Final graph output is `REVIEW`; no actionable candidate text is exposed as final decision |
 | D-INT-03 | Team mode runs with market analyst unselected | Final graph output is `REVIEW` with `market_analyst_not_run`; no pending settlement entry is created |
 | D-INT-04 | Standard mode | Existing upstream result path is preserved |
+| D-STREAM-01 | Real team-mode graph stream with unavailable evidence and a scripted PM `Buy` | No yielded decision or message exposes the rejected candidate, and at least one state publishes `REVIEW` with the reason |
+| D-STREAM-02 | Inject an intermediate candidate `Buy` chunk into the CLI stream before the gated `REVIEW` chunk | No live decision panel contains `Buy`, and the last panel and completion notice show `REVIEW` |
 | D-OUT-01 | Ineligible graph state is written as Markdown and HTML | Both show `REVIEW` and user-visible trigger reasons; neither shows candidate rating as final |
 | D-OUT-02 | CLI exposes `--decision-mode standard|team`, defaulting to `standard` | Mode reaches analysis config; invalid mode is rejected |
 | D-OUT-03 | CLI analysis completes with an ineligible final state, without opting to print the full report | Completion notice shows `REVIEW` and the same user-visible trigger reasons |
 | D-OUT-04 | CLI's final report display receives ineligible final state | CLI display shows `REVIEW` and the same user-visible trigger reasons |
+| D-OUT-05 | Invoke the CLI command with `--decision-mode team` and run analysis setup | `TradingAgentsGraph` construction receives `decision_mode="team"` |
 | D-LOG-01 | State log receives ineligible final state | Stored authoritative rating/reasons are `REVIEW`/gate reasons |
 | D-MEM-01 | A `REVIEW` result is recorded | No pending settlement/reflection entry is created |
 
 ## NFR-D measurement
 
-The fixed negative cases D-UNIT-03–09 and D-INT-02 are the bypass denominator.
+Use the independent negative evaluator cases (D-UNIT-03–08 and D-UNIT-10,
+counting the D-UNIT-03–06 matrix once), graph cases (D-INT-02–03), and stream
+cases (D-STREAM-01–02) as the bypass denominator.
 Count a bypass if a blocked case produces any allowed final rating in graph,
 CLI, Markdown, HTML or state log, or creates a pending settlement/reflection
 entry. Acceptance requires **0 bypasses**. The tests are deterministic and CI
@@ -84,10 +90,11 @@ must run them on every applicable change.
   passed. Full command output belongs in the active session/export, not fabricated
   into this plan.
 - New tests are expected to fail against the unimplemented feature baseline.
-- Actual focused baseline on the tests-only draft:
+- Actual focused baseline on the initial PR #2 tests-only head (`0448de2`):
   `python -m pytest test/offline/test_eligibility.py -q` collected 34 cases, with
-  32 failing against absent gate/CLI/report/settlement behavior and 2 passing
-  independent structural checks. The two team-mode graph integration cases
+  32 failures and 2 passes (report fixture and vocabulary). One original
+  presentation check also depended on terminal wrapping; the correction fixes
+  its console width without removing its content assertions. The two team-mode graph integration cases
   failed because `TradingAgentsGraph` does not yet accept `decision_mode`.
 - Regression command excluding the new, deliberately red gate contract and its
   two expected-red graph cases:
@@ -99,3 +106,22 @@ must run them on every applicable change.
 - `Test-Plan-Approved: <full SHA>` and reviewer rationale: pending. No D
   application code may be written until a non-D reviewer approves the tests-only
   revision through the documented same-PR GitHub review process.
+
+## PR #2 review correction
+
+Review of `0448de2b0e7ff1aa06f1ed2a61f91dca292a81db` concluded
+`CHANGES REQUIRED` (`docs/review-memo.md`). The correction covers findings 2–5
+with D-INT-01, D-OUT-05, D-STREAM-01–02 and the explicit 16-variant Buy matrix;
+finding 6 is addressed in `docs/verification/d-eligibility.md` using fresh
+read-only GitHub metadata. Finding 1 remains pending: return the PR to draft and
+obtain the required independent human Comment review of the revised tests-only
+commit. The local memo is not a GitHub test-plan approval.
+
+The final revised full run (`.venv/bin/python -m pytest -q --tb=no --disable-warnings`)
+reported **36 failed, 1430 passed, 1 skipped, 1 deselected, 100 subtests passed**.
+Every failure is in D's tests-first cases; the prior offline suite passed in the
+same run. No expected-failure markers, skips, CI exclusions or application stubs
+were introduced to make these unimplemented acceptance cases pass. Keep this
+tests-only stage as a draft; after approval and implementation, all acceptance
+and regression tests must pass. Static/schema/dependency checks passed; see the
+verification log for exact commands and their scope.

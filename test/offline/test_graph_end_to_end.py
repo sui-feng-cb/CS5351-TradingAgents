@@ -156,8 +156,43 @@ def test_a_full_run_reaches_a_logged_decision(tmp_path, monkeypatch, offline, st
 
 
 @pytest.mark.unit
-def test_team_mode_gate_rejects_model_buy_when_verified_market_data_is_unavailable(
+def test_team_mode_graph_accepts_valid_market_evidence_and_allowed_rating(
     tmp_path, monkeypatch, offline,
+):
+    load_prices = snapshot.load_ohlcv
+    monkeypatch.setattr(snapshot, "load_ohlcv", lambda *args, **kwargs: load_prices(*args, **kwargs).iloc[:-1])
+    graph = _graph(
+        tmp_path, monkeypatch, ScriptedModel(structured=True), decision_mode="team"
+    )
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == state["final_rating"] == "Overweight"
+    assert "ohlcv" in offline
+    assert state["market_analyst_status"] == "completed"
+    assert state["market_evidence_status"] == "valid"
+    assert state["snapshot_date"] == "2026-01-08"
+    assert state["eligibility_reason_codes"] == []
+
+
+@pytest.fixture
+def model_buy(monkeypatch):
+    candidate_text = "PM candidate only: Buy based on the analyst narrative."
+    monkeypatch.setitem(
+        STRUCTURED,
+        schemas.PortfolioDecision,
+        schemas.PortfolioDecision(
+            rating=schemas.PortfolioRating.BUY,
+            executive_summary="Candidate Buy",
+            investment_thesis=candidate_text,
+        ),
+    )
+    return candidate_text
+
+
+@pytest.mark.unit
+def test_team_mode_gate_rejects_model_buy_when_verified_market_data_is_unavailable(
+    tmp_path, monkeypatch, offline, model_buy,
 ):
     from tradingagents.dataflows.errors import VendorUnavailableError
 
@@ -165,15 +200,6 @@ def test_team_mode_gate_rejects_model_buy_when_verified_market_data_is_unavailab
         raise VendorUnavailableError("synthetic offline failure")
 
     monkeypatch.setattr(snapshot, "load_ohlcv", unavailable)
-    monkeypatch.setitem(
-        STRUCTURED,
-        schemas.PortfolioDecision,
-        schemas.PortfolioDecision(
-            rating=schemas.PortfolioRating.BUY,
-            executive_summary="s",
-            investment_thesis="Buy based on the analyst narrative.",
-        ),
-    )
     graph = _graph(
         tmp_path, monkeypatch, ScriptedModel(structured=True), decision_mode="team"
     )
@@ -188,6 +214,7 @@ def test_team_mode_gate_rejects_model_buy_when_verified_market_data_is_unavailab
     assert signal == state["final_rating"] == "REVIEW"
     assert "market_evidence_unavailable" in state["eligibility_reason_codes"]
     assert "Buy" not in state["final_trade_decision"]
+    assert model_buy not in state["final_trade_decision"]
     assert logged["final_rating"] == "REVIEW"
     assert "market_evidence_unavailable" in logged["eligibility_reason_codes"]
     for output in (markdown, html):
@@ -198,7 +225,37 @@ def test_team_mode_gate_rejects_model_buy_when_verified_market_data_is_unavailab
 
 
 @pytest.mark.unit
-def test_team_mode_with_no_market_analyst_fails_closed_as_review(tmp_path, monkeypatch, offline):
+def test_team_mode_stream_never_publishes_buy_before_gate_replaces_it_with_review(
+    tmp_path, monkeypatch, offline, model_buy,
+):
+    from tradingagents.dataflows.errors import VendorUnavailableError
+
+    def unavailable(*_args, **_kwargs):
+        raise VendorUnavailableError("synthetic offline failure")
+
+    monkeypatch.setattr(snapshot, "load_ohlcv", unavailable)
+    graph = _graph(
+        tmp_path, monkeypatch, ScriptedModel(structured=True), decision_mode="team"
+    )
+
+    initial = graph.create_run_state("NVDA", TRADE_DATE)
+    decisions = []
+    for messages, state in graph.stream_run(
+        graph.checkpoint_input(initial), **graph.propagator.get_graph_args()
+    ):
+        assert all(model_buy not in str(message.content) for message in messages)
+        if state and (state.get("final_rating") or state.get("final_trade_decision")):
+            assert state["final_rating"] == "REVIEW"
+            assert "REVIEW" in state["final_trade_decision"]
+            assert "Buy" not in state["final_trade_decision"]
+            assert "market_evidence_unavailable" in state["eligibility_reason_codes"]
+            decisions.append(state["final_rating"])
+
+    assert decisions
+
+
+@pytest.mark.unit
+def test_team_mode_with_no_market_analyst_fails_closed_as_review(tmp_path, monkeypatch, offline, model_buy):
     graph = _graph(
         tmp_path,
         monkeypatch,
@@ -211,6 +268,8 @@ def test_team_mode_with_no_market_analyst_fails_closed_as_review(tmp_path, monke
 
     assert signal == state["final_rating"] == "REVIEW"
     assert "market_analyst_not_run" in state["eligibility_reason_codes"]
+    assert "Buy" not in state["final_trade_decision"]
+    assert model_buy not in state["final_trade_decision"]
     assert graph.memory_log.get_pending_entries() == []
 
 

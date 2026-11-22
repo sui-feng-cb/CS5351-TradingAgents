@@ -40,6 +40,10 @@ Status: D contract proposal for test review; no D executable interface is claime
   status and ordered reason codes. Ineligible output replaces the public final
   decision text with a `REVIEW` notice; model candidate prose cannot remain the
   apparent final call. Standard mode passes through the existing flow.
+- Team-mode final state exposes `market_analyst_status`,
+  `market_evidence_status`, `snapshot_date` and `eligibility_reason_codes`.
+  The reason list is empty on an eligible result. Public graph stream frames
+  and CLI live decision panels only publish a final rating after qualification.
 - Initial reason-code proposal (report all applicable causes in this order):
   `market_analyst_not_run`, `market_analyst_failed`,
   `market_analyst_invalid_status`,
