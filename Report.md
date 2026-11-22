@@ -25,6 +25,49 @@ from the pending settlement/reflection queue. Reviews will distinguish candidate
 model ratings from the authoritative result. The feature test suite still needs
 independent approval before implementation; no feature results are claimed here.
 
+### D implementation-session blueprint and baseline (2026-11-22)
+
+The user approved the D module execution blueprint and then requested development
+to begin. Work is underway on the D test-first stage in the local `D` worktree;
+no application feature code or remote synchronization has occurred. The user
+subsequently authorized a tests-only commit, non-force push to `origin/D` and
+draft PR for independent test review. The user later confirmed that remote D was
+removed; a read-only ref check found only `origin/main`. The local commit command
+was blocked by the execution environment, so no commit, push or PR is claimed.
+The tests-only changes remain staged; details are in
+`docs/verification/d-eligibility.md`.
+The proposed `standard`/`team` mode, typed evidence status, reuse of the upstream
+10-calendar-day OHLCV freshness bound and review-notice behavior are recorded in
+[ADR-002](docs/architecture/adr/002-deterministic-eligibility-gate.md) and remain
+subject to independent test/safety review. The approved blueprint is not being
+treated as approval of these detailed acceptance tests.
+
+Pre-change baseline on the project `.venv` (Python 3.13.18): full pytest reported
+1427 passed, 1 skipped, 1 deselected; governance, Ruff, mypy for the governance
+script and pip dependency consistency checks passed. The skipped test requires
+the optional `langchain_aws` dependency; one live test was deselected. These are
+baseline results only, not D feature verification.
+
+The active session has not yet been exported or annotated. The reviewer approval
+of D's tests-only change, D implementation/build review, final verification,
+independent safety review and integration review remain pending. The actual
+tests-only red baseline is recorded in `docs/verification/d-eligibility.md`.
+Track the test contract in
+[`docs/testing/d-eligibility-test-plan.md`](docs/testing/d-eligibility-test-plan.md)
+and actual run records in
+[`docs/verification/d-eligibility.md`](docs/verification/d-eligibility.md).
+
+The tests-only draft now includes a pure status/date/rating matrix, CLI mode and
+review-message checks, report and settlement assertions, and team-mode graph
+conflict cases. The focused acceptance suite reports 32 expected failures and 2
+independent checks passed against the absent implementation; the two new graph
+team-mode integration tests also fail at the expected missing constructor
+contract. The prior offline regression suite passed with only these new
+acceptance cases excluded (1427 passed, 1 skipped, 2 deselected, 100 subtests).
+This is evidence that the tests detect missing behavior, not feature
+verification. The independent test review remains pending before application
+code.
+
 ## Architecture and integration
 
 Explain alternatives, ADD iterations, boundaries, interface decisions and the

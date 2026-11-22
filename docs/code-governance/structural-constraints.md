@@ -6,7 +6,11 @@ Each new architecture element has exactly one owning module, defined in AGENTS.
 New modules/functions reference requirement/ADR/invariant IDs in docstrings or
 adjacent documentation. No cyclic imports or copy-pasted upstream replacements.
 
-INV-D requires final structured rating to be authoritative over narrative text.
+INV-D / ADR-002 require the team-mode gate to set the authoritative final
+structured rating before the graph publishes its final state; adapters may not
+re-derive a rating from candidate prose. The pure D evaluator belongs to
+`src/tradingagents/enhancements/eligibility.py`; coordinated graph, CLI, state,
+report and settlement integration remains subject to independent review.
 INV-B requires source metadata to be authoritative over model citations. The
 upstream layering regression remains mandatory; relocating tests must not make it
 silently inspect an empty directory. Interface and security changes need ADRs and

@@ -36,3 +36,15 @@ entries:
     transcript_status: Active OpenCode session requires human TUI export and annotation.
     validation: docs/verification/github-flow.md
     feature_status: application-features-unchanged
+  - id: D-ELIG-001
+    scope: d-eligibility-gate-test-first
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, GOV-01]
+    user_direction: User approved the D execution blueprint and then requested development to begin.
+    human_approval: Blueprint approved; the detailed D acceptance-test review is still pending.
+    publication_direction: User explicitly authorized a tests-only commit on local D, a non-force push only to origin/D, and creation of a draft PR for independent test review; no main-branch publication or remote D synchronization.
+    files: [docs/architecture, docs/code-governance/structural-constraints.md, docs/code-governance/verification-constraints.md, docs/req/requirements.yaml, docs/testing/d-eligibility-test-plan.md, docs/verification/d-eligibility.md, Report.md, test/offline/test_eligibility.py, test/offline/test_graph_end_to_end.py]
+    transcript: Active OpenCode session; TUI /export and human annotation pending.
+    transcript_status: not-yet-exported
+    validation: docs/verification/d-eligibility.md
+    feature_status: test-contract-draft-awaiting-independent-review; application-code-not-started

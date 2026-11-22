@@ -8,6 +8,7 @@ the wiring: a restructure that drops a node, a tool or an edge fails here.
 from __future__ import annotations
 
 import copy
+import json
 import time
 
 import pandas as pd
@@ -122,10 +123,17 @@ def offline(monkeypatch, tmp_path):
 
 def _graph(tmp_path, monkeypatch, model, debug=False, **config):
     cfg = copy.deepcopy(DEFAULT_CONFIG)
+    decision_mode = config.pop("decision_mode", None)
+    selected_analysts = config.pop(
+        "selected_analysts", ("market", "social", "news", "fundamentals")
+    )
     cfg.update(results_dir=str(tmp_path / "results"), data_cache_dir=str(tmp_path / "cache"),
                memory_log_path=str(tmp_path / "log.md"), **config)
     monkeypatch.setattr(trading_graph, "create_tier_client", lambda config, tier, **k: _Client(model))
-    return trading_graph.TradingAgentsGraph(config=cfg, debug=debug)
+    graph_kwargs = {"config": cfg, "debug": debug}
+    if decision_mode is not None:
+        graph_kwargs["decision_mode"] = decision_mode
+    return trading_graph.TradingAgentsGraph(selected_analysts, **graph_kwargs)
 
 
 @pytest.mark.unit
@@ -145,6 +153,65 @@ def test_a_full_run_reaches_a_logged_decision(tmp_path, monkeypatch, offline, st
                     "get_insider_transactions", "ohlcv"}
     assert offline == tool_methods
     assert [e["rating"] for e in graph.memory_log.load_entries()] == ["Overweight"]
+
+
+@pytest.mark.unit
+def test_team_mode_gate_rejects_model_buy_when_verified_market_data_is_unavailable(
+    tmp_path, monkeypatch, offline,
+):
+    from tradingagents.dataflows.errors import VendorUnavailableError
+
+    def unavailable(*_args, **_kwargs):
+        raise VendorUnavailableError("synthetic offline failure")
+
+    monkeypatch.setattr(snapshot, "load_ohlcv", unavailable)
+    monkeypatch.setitem(
+        STRUCTURED,
+        schemas.PortfolioDecision,
+        schemas.PortfolioDecision(
+            rating=schemas.PortfolioRating.BUY,
+            executive_summary="s",
+            investment_thesis="Buy based on the analyst narrative.",
+        ),
+    )
+    graph = _graph(
+        tmp_path, monkeypatch, ScriptedModel(structured=True), decision_mode="team"
+    )
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+    report = graph.save_reports(state, "NVDA", tmp_path / "report", html=True)
+    state_log = next((tmp_path / "results" / "NVDA" / "TradingAgentsStrategy_logs").glob("*.json"))
+    logged = json.loads(state_log.read_text(encoding="utf-8"))
+    markdown = report.read_text(encoding="utf-8")
+    html = (tmp_path / "report" / "complete_report.html").read_text(encoding="utf-8")
+
+    assert signal == state["final_rating"] == "REVIEW"
+    assert "market_evidence_unavailable" in state["eligibility_reason_codes"]
+    assert "Buy" not in state["final_trade_decision"]
+    assert logged["final_rating"] == "REVIEW"
+    assert "market_evidence_unavailable" in logged["eligibility_reason_codes"]
+    for output in (markdown, html):
+        assert "REVIEW" in output
+        assert "market_evidence_unavailable" in output
+        assert "Buy" not in output
+    assert graph.memory_log.get_pending_entries() == []
+
+
+@pytest.mark.unit
+def test_team_mode_with_no_market_analyst_fails_closed_as_review(tmp_path, monkeypatch, offline):
+    graph = _graph(
+        tmp_path,
+        monkeypatch,
+        ScriptedModel(structured=True),
+        decision_mode="team",
+        selected_analysts=("news",),
+    )
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == state["final_rating"] == "REVIEW"
+    assert "market_analyst_not_run" in state["eligibility_reason_codes"]
+    assert graph.memory_log.get_pending_entries() == []
 
 
 @pytest.mark.unit
