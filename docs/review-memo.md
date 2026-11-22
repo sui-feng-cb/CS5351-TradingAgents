@@ -246,6 +246,25 @@ the correct `CS5351-TradingAgents` link and confirmed the old URL is absent.
 Local verification is recorded in `docs/verification/d-eligibility.md`. This
 author response does not replace the recorded re-review verdict.
 
+## PR #3 复审 · `29ce124` · 2026-11-22
+
+- 审查范围为 FR-D、NFR-D、INV-D、BASE-01 和 ADR-002。基线为
+  `b5e6663c790b244b099051aee46549e1a9e51069`，审查提交为
+  `29ce124e3096e6ee4972bed0248a0df78e74d77d`。
+  [GitHub 复审评论](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/3#issuecomment-7079866044)
+- 上轮的缩进代码块和混合围栏用例均得到 `REVIEW`、`invalid_rating` 和零待结算条目。
+  PR 描述中的 PR #2 链接已更正。
+- **P1** `rating.py` 跳过含跨行行内代码的整段。有效行情下，第一段的
+  `Rating: Strong Buy` 被跳过，后续段落的 `Rating: Buy` 成为权威评级并新增一条待结算记录。
+- **CHANGES REQUIRED**。保留同段可见的评级字段，并用完整图覆盖冲突拒绝和合法评级通过。
+
+### 本轮修复记录
+
+CommonMark 解析现在保留真实换行的源位置，并屏蔽行内代码消耗的源换行。
+冲突场景返回 `REVIEW` 和 `invalid_rating`，待结算条目为零。合法 `Hold` 对照通过并生成一条待结算记录。
+团队检查点升级至 v4，旧候选评级会重新计算。完整本地结果与远端 CI 重跑记录见
+[D 验证日志](verification/d-eligibility.md)。以上是本地修复证据，修复后的提交待独立复审。
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:

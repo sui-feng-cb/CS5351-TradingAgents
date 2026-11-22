@@ -80,6 +80,10 @@ nested task states and are covered by the expanded graph and team-rating tests.
 Pre-fix team checkpoints start a fresh run under the versioned team signature;
 standard checkpoint IDs remain unchanged.
 
+For team free text, a CommonMark line break can delimit a rating field. A
+newline inside a code span cannot delimit a field. Other lines in the same
+paragraph remain subject to exact-rating validation.
+
 Use UTC-aware stored timestamps; analysis dates remain explicit trading dates.
 Freeze schema, null semantics, identifiers and errors before parallel coding.
 Reserve `test/offline/test_comparison.py`, `test_events.py`, `test_manifest.py`,

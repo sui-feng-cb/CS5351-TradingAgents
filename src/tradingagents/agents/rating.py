@@ -20,6 +20,7 @@ import unicodedata
 from collections.abc import Iterator
 
 from markdown_it import MarkdownIt
+from markdown_it.rules_inline import StateInline, escape, newline
 from markdown_it.tree import SyntaxTreeNode
 
 # Canonical, ordered 5-tier scale (most bullish to most bearish).
@@ -115,6 +116,23 @@ _TEAM_RATING_LINE_RE = re.compile(
 _TEAM_RATING_MARKDOWN = MarkdownIt("commonmark")
 
 
+def _team_rating_break(state: StateInline, silent: bool) -> bool:
+    """Record source offsets for real CommonMark inline breaks (ADR-002, INV-D)."""
+    offset = state.pos
+    if state.src[offset] == "\n":
+        matched = newline(state, silent)
+    elif state.src.startswith("\\\n", offset):
+        matched = escape(state, silent)
+    else:
+        return False
+    if matched and not silent:
+        state.tokens[-1].meta["rating_break_span"] = (offset, state.pos)
+    return matched
+
+
+_TEAM_RATING_MARKDOWN.inline.ruler.before("newline", "team_rating_break", _team_rating_break)
+
+
 def _team_rating_lines(text: str) -> Iterator[str]:
     """Yield candidate fields from ordinary Markdown blocks (ADR-002, INV-D)."""
     root = SyntaxTreeNode(_TEAM_RATING_MARKDOWN.parse(text))
@@ -127,12 +145,18 @@ def _team_rating_lines(text: str) -> Iterator[str]:
         for block in blocks:
             if block.type not in {"paragraph", "heading"}:
                 continue
-            inline = block.children[0]
-            # A source newline swallowed by an inline construct (e.g. a multiline
-            # code span) is not a visible line boundary for a rating field.
-            line_breaks = sum(child.type in {"softbreak", "hardbreak"} for child in inline.children)
-            if line_breaks == inline.content.count("\n"):
-                yield from inline.content.split("\n")
+            inline = block.children[0].token
+            start = 0
+            # Keep the raw spelling and wrappers on each visible line. Source
+            # newlines consumed by inline code or other markup cannot start a
+            # field or turn adjacent fragments into an exact value.
+            for token in inline.children or ():
+                span = token.meta.get("rating_break_span")
+                if span is not None:
+                    stop, next_start = span
+                    yield inline.content[start:stop].replace("\n", "\ufffc")
+                    start = next_start
+            yield inline.content[start:].replace("\n", "\ufffc")
 
 
 def parse_team_rating(text: str) -> str:

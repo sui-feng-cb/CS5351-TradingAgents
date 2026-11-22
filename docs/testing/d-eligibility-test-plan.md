@@ -164,6 +164,11 @@ test-plan approval is claimed for this local revision.
 | SQLite checkpoint created with pre-fix team signature and a staged Buy | Start fresh; unavailable evidence produces REVIEW and zero pending entries |
 | Team free-text graph receives an indented or mixed-fence code example with `Rating: Buy`, and no own field | Valid evidence does not rescue the candidate: REVIEW with `invalid_rating` and zero pending entries |
 | Team free-text graph receives a real `Hold` field after a correctly closed code block | Hold with no eligibility reasons and one matching pending entry |
+| Team free-text graph receives a visible `Rating: Strong Buy` in the same paragraph as a multiline code span, followed by a separate `Rating: Buy` | Valid evidence, REVIEW with exactly `invalid_rating`, zero pending entries |
+| Team free-text graph receives a visible `Rating: Hold` in the same paragraph as a multiline code span | Hold with no eligibility reasons and one matching pending entry |
+| A visible Hold is followed by a Markdown hard break and a multiline code example | Hold for both trailing-space and backslash break syntax |
+| Parser receives a multiline code span as the entire rating value, or an inline comment beside an invalid own rating | REVIEW in both cases |
+| A v3 SQLite checkpoint already holds a Buy and current market evidence is unavailable | Start fresh, return REVIEW with `market_evidence_unavailable` and zero pending entries |
 | Five exact own ratings in plain/list/heading Markdown plus consensus quotation | Preserve the exact own value |
 | Lowercase/uppercase/extra prose, missing or conflicting own fields, quote-only rating and scale legend | REVIEW, even with consensus Buy |
 

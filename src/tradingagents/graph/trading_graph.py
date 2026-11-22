@@ -179,7 +179,7 @@ class TradingAgentsGraph:
         # INV-D / ADR-002: pre-fix team checkpoints may already contain evidence
         # or candidates accepted by the old rules. Standard checkpoint IDs stay stable.
         if getattr(self, "decision_mode", "standard") == "team":
-            signature_parts.extend(("decision_mode=team", "eligibility=v3"))
+            signature_parts.extend(("decision_mode=team", "eligibility=v4"))
         return "|".join(signature_parts)
 
     def propagate(self, company_name, trade_date, asset_type: str = "stock", portfolio=None):

@@ -5,6 +5,43 @@ passed. PR #3 review found three bypasses in the initial implementation; the
 corrections below pass local regression but await corrected-head CI and independent
 re-review. Earlier sections preserve the original implementation/tests-first evidence.
 
+## PR #3 inline-code repair after `29ce124` — 2026-11-22
+
+The user approved the local FR-D/NFR-D/INV-D repair and directed this round to
+proceed while the same-PR review check remains unresolved. The latest
+[GitHub review comment](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/3#issuecomment-7079866044)
+reports a visible `Strong Buy` being skipped when the same paragraph has a
+multiline code span. Before the parser edit, the two parser and two graph cases
+failed as expected. The targeted run reported 4 failed and 15 passed. It
+observed `Buy` on the invalid path and `REVIEW` on the valid `Hold` path.
+An initial token reconstruction lost emphasis content, causing seven existing
+regressions. Recording source offsets on CommonMark break tokens preserved
+Markdown wrapper compatibility. A v3 SQLite fixture still emitted `Buy` after
+the parser fix, so the team checkpoint policy advanced to v4. Local review also
+found that the backslash in a Markdown hard break could invalidate a visible
+`Hold`. A failing parser regression verified the issue before the parser was
+updated to use the full break span.
+
+| Command | Result |
+|---|---|
+| `.venv/bin/python -m pytest -q test/offline/test_team_rating.py test/offline/test_graph_end_to_end.py --tb=short` | 80 passed. |
+| `.venv/bin/python -m pytest -q --tb=short --disable-warnings` | 1536 passed, 1 skipped, 1 deselected, 100 subtests passed and 24 warnings. |
+| `TZ=America/New_York .venv/bin/pytest -q --tb=short --disable-warnings` | Same counts using the CI entry point. |
+| `.venv/bin/python -m ruff check .`, `.venv/bin/python -m mypy scripts/check_governance.py`, `.venv/bin/python -m pip check` | Passed. |
+| `.venv/bin/python scripts/check_governance.py --base b5e6663c790b244b099051aee46549e1a9e51069` | Passed registry, layout, permission, basic credential-pattern scan and checks for the committed PR refs. |
+
+On the published `29ce124`, the original PR test job stopped during development
+dependency installation with `ResolutionImpossible`. The same SHA's push job
+passed all 1528 tests in its suite. `gh run rerun 45025694225 --failed -R
+sui-feng-cb/CS5351-TradingAgents` reran the PR test with the existing Tsinghua
+index. Install and pytest both passed on attempt 2, with 1528 passed, 1 skipped,
+1 deselected and 100 subtests passed.
+[Successful rerun](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45025694225/attempts/2)
+
+`same-PR reviews` still reports missing independent pre-implementation test
+review evidence. The code and test results above describe the local candidate
+for the next D commit. The active TUI transcript export is pending.
+
 ## PR #3 re-review repairs
 
 The user directed repairs for the findings recorded at `a99b017` (FR-D, NFR-D,

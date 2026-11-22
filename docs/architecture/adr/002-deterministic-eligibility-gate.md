@@ -89,6 +89,12 @@ handles fence character, length and closing syntax. Team checkpoint policy v3
 forces fresh qualification instead of reusing candidates parsed under v1 or v2;
 standard parsing and checkpoint identity are preserved.
 
+Review of `29ce124` found that a multiline inline code span could suppress all
+fields in its paragraph. The team parser now derives field boundaries from real
+CommonMark breaks, retaining the source spelling on each line for exact-value
+validation. Source newlines consumed by inline markup cannot supply a field.
+Team checkpoint policy v4 forces requalification of earlier team candidates.
+
 ## Alternatives considered
 
 | Option | Assessment |

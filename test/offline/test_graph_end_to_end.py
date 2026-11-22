@@ -325,6 +325,16 @@ def test_free_text_own_rating_cannot_be_replaced_by_consensus(
     pytest.param("Example only:\n\n    Rating: Buy", "REVIEW", id="indented-code"),
     pytest.param("Example only:\n\n~~~text\n```\nRating: Buy\n~~~", "REVIEW", id="mixed-fence"),
     pytest.param("Example only:\n\n```text\nRating: Buy\n```", "REVIEW", id="ordinary-fence"),
+    pytest.param(
+        "Rating: Strong Buy\n`example\ncontinued`\n\nRating: Buy",
+        "REVIEW",
+        id="invalid-own-rating-before-multiline-code-and-later-buy",
+    ),
+    pytest.param(
+        "Rating: Hold\n`example\ncontinued`",
+        "Hold",
+        id="valid-own-rating-with-multiline-code-in-paragraph",
+    ),
     pytest.param("~~~text\n```\nRating: Buy\n~~~~\n\n**Rating**: Hold", "Hold", id="real-rating"),
 ])
 def test_team_graph_distinguishes_markdown_examples_from_own_rating(
@@ -367,14 +377,14 @@ def test_team_stream_releases_trader_proposal_only_after_positive_qualification(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("policy_suffix", ["", "|eligibility=v2"], ids=["v1", "v2"])
+@pytest.mark.parametrize("policy_suffix", ["", "|eligibility=v2", "|eligibility=v3"], ids=["v1", "v2", "v3"])
 def test_team_run_does_not_resume_a_pre_fix_portfolio_candidate(tmp_path, monkeypatch, offline, policy_suffix):
     """NFR-D/INV-D: recovery cannot skip the corrected evidence and rating checks."""
     from tradingagents.dataflows.errors import VendorUnavailableError
     from tradingagents.graph.checkpointer import get_checkpointer, thread_id
 
     standard = _graph(tmp_path, monkeypatch, ScriptedModel(structured=True), checkpoint_enabled=True)
-    # Both previous signatures could persist a candidate without the current checks.
+    # Earlier signatures could persist a candidate without the current checks.
     legacy_signature = standard._run_signature("stock") + "|decision_mode=team" + policy_suffix
     graph = _graph(
         tmp_path, monkeypatch, ScriptedModel(structured=True), checkpoint_enabled=True, decision_mode="team",

@@ -35,6 +35,27 @@ def test_team_rejects_invalid_missing_or_conflicting_own_rating_even_with_consen
     pytest.param("```\nRating: Buy\n```", "REVIEW", id="ordinary-fence"),
     pytest.param("- Example:\n\n      Rating: Buy", "REVIEW", id="list-indented-code"),
     pytest.param("`Example\nRating: Buy\nEnd`", "REVIEW", id="multiline-code-span"),
+    pytest.param(
+        "Rating: Strong Buy\n`example\ncontinued`\n\nRating: Buy",
+        "REVIEW",
+        id="visible-invalid-rating-before-multiline-code-span",
+    ),
+    pytest.param(
+        "**Rating**: `Hold`  \n`example\nRating: Buy\ncontinued`",
+        "Hold",
+        id="visible-valid-rating-with-space-hardbreak",
+    ),
+    pytest.param(
+        "Rating: Hold\\\n`example\nRating: Buy\ncontinued`",
+        "Hold",
+        id="visible-valid-rating-with-backslash-hardbreak",
+    ),
+    pytest.param("Rating: `Buy\n`", "REVIEW", id="multiline-code-cannot-supply-value"),
+    pytest.param(
+        "Rating: Strong Buy\n<!-- example\ncontinued -->\n\nRating: Buy",
+        "REVIEW",
+        id="inline-comment-cannot-hide-invalid-rating",
+    ),
     pytest.param("<!--\nRating: Buy\n-->", "REVIEW", id="html-comment"),
     pytest.param("~~~text\n```\nRating: Buy\n~~~~\n\n- **Rating**: **Hold**", "Hold", id="real-rating-after-longer-closer"),
     pytest.param("    Rating: Buy\n\n## Final Rating: Hold", "Hold", id="real-rating-after-indented-code"),
