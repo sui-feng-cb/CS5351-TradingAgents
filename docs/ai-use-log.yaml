@@ -211,16 +211,35 @@ entries:
     transcript: pending final TUI export
     transcript_status: active-session TUI export pending
     validation: docs/verification/c-manifest.md
-    feature_status: tests-first; PR5-review-at-64f7bec-recorded-20-expected-C-failures-1532-passing; this-round-29-expected-C-failures-1532-passed; generator and timing tool baselined; independent-approval-pending; implementation-not-started
-  - id: C-MANIFEST-TESTS-002
-    scope: fr-c-nfr-c-tests-only-pr5-wrap-up
+    feature_status: tests-first; 20-expected-acceptance-failures; generator and timing tool baselined; independent-approval-pending; implementation-not-started
+  - id: REVIEW-PR5-001
+    scope: read-only-review-of-pr-5-c-manifest-tests-and-docs
     agent: OpenCode
     requirements: [FR-C, NFR-C, SEC-01, GOV-01]
-    user_direction: Finish PR #5 tests-only; fix JSON stdout parsing, per-sample run ids, warning assertions; run baseline/ruff/governance; update verification and AI-use evidence.
-    human_approval: tests-and-docs-only stage approved by the C owner; independent non-C Test-Plan-Approved review still required.
-    publication_direction: No commit, push, PR or merge in this revision; wait for diff review.
-    files: [test/offline/test_manifest.py, docs/verification/c-manifest.md, docs/ai-use-log.yaml]
-    transcript: pending final TUI export
-    transcript_status: active-session TUI export pending
-    validation: docs/verification/c-manifest.md
-    feature_status: baseline-29-expected-C-failures-1532-passed-1-skipped-1-deselected-100-subtests; ruff-and-governance-pass; NFR-C-timing-and-independent-approval-pending
+    user_direction: "现在在C分支，C已经提交了pr #5，给出review意见，把review结论写在docs/review-memo.md，并在对话框中输出可复制的markdown文本。"
+    human_approval: review-request-only; no application code, commit, push, GitHub review submission or merge authorized
+    publication_direction: "Updated local review/session artifacts; GitHub metadata and CI logs were queried read-only. No remote mutation performed."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 5
+    base_sha: ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f
+    head_sha: 64f7bec36e91b83f976708ff5310966530596010
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr5-manifest-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "CHANGES REQUIRED; P1 gaps in path containment and CLI read-only tests; P2 gaps in schema negatives, safe error assertions, CLI filter wiring and saved-report integration; NFR-C timing remains deferred"
+    verification: "Python 3.13: full suite 1532 passed, 20 expected C acceptance failures, 1 skipped, 1 deselected, 100 subtests; governance, Ruff, mypy, pip check and git diff --check passed. GitHub PR checks: governance/safety/Ruff/clean-install passed; Python 3.13 test jobs failed on expected absent C implementation."
+    review_export: "Active-session TUI /export is unavailable through the tool interface; user must run /export and link the real export under transcripts/raw. No transcript was synthesized."
+  - id: REVIEW-PR5-002
+    scope: re-review-of-pr-5-c-manifest-test-corrections
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: "PR #5 已按要求更新，再次审查，说明两个 CI 失败原因及重要性、总结修改，并申请通过。"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 5
+    previous_head_sha: 64f7bec36e91b83f976708ff5310966530596010
+    head_sha: 677e9f396e9ae3498d218a42d1a49f1e8270af48
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr5-manifest-review/SKILL.md]
+    validation: docs/review-memo.md
+    ci_summary: "Two test jobs triggered by pull_request and push on the same head; each reports 29 expected C-only failures, 1532 passed, 1 skipped, 1 deselected, 100 subtests. Remaining checks pass. Required test status remains a merge blocker until implementation makes the C tests pass."
+    feature_status: "APPROVE for tests-and-docs review only; previous six findings resolved. Merge readiness awaits green required tests. CLI JSON shape, failure error literals and NFR-C target require team confirmation."
+    github_review: "APPROVE submitted at 2026-11-23T06:11:54Z for tests-and-docs scope only: https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/5#pullrequestreview-6017260315. Approval triggered a new safety-review check, pending at last status query. No merge performed."
+    transcript_status: "Active-session TUI /export unavailable in tool interface; user must export under transcripts/raw. No transcript synthesized."
