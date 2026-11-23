@@ -524,15 +524,16 @@ the required suite must pass after implementation. The pending candidate contrac
 values and NFR-C target remain subject to team confirmation. This review does not
 approve application implementation or merge.
 
-## FR-A / NFR-A 同日双标的比较 PR（draft）
+## FR-A / NFR-A 同日双标的比较 PR · 2026-11-23
 
 - **Repository:** `sui-feng-cb/CS5351-TradingAgents`
 - **PR:** #7 — https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/7
-- **Reviewer:** 待填（必须为非作者；不得自批）
-- **Base:** main
-- **Head:** 40bbe2cd8fd2799d629c1a4acf88dfa5c57bb62a
+- **Reviewer:** OpenCode（按用户请求进行非作者代码审查）
+- **Base:** main / `41e1b0b5f0717d349dab5a688634a32a388b7466`
+- **Reviewed head:** `ea49ffba50c43ea2def802bec21a70fac6f2c38a`
+- **Merge commit:** `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`（审查 head 与其内容一致）
 - **Date:** 2026-11-23
-- **Scope:** FR-A、NFR-A、INV-A；A-IC-001（2026-11-23 冻结）
+- **Scope:** FR-A、NFR-A、INV-A、SEC-01；A-IC-001、ADR-001
 - **Files:** `src/tradingagents/enhancements/comparison.py`、
   `test/offline/test_comparison.py`、`docs/architecture/interface-contracts.md`、
   `docs/architecture/invariants.md`、`docs/architecture/trace-matrix.md`、
@@ -541,19 +542,37 @@ approve application implementation or merge.
 ### 需求与架构对齐
 
 - FR-A：两个不同 ticker、同一 canonical 日期、顺序调用上游；
-  输出比较 Markdown + 强制 manifest；字段顺序符合 draft-0.3。
+  输出比较 Markdown + 强制 manifest；draft-0.3 字段顺序。
 - NFR-A：任一 ticker 失败时另一成功报告保留；失败行 rating/summary/report_path
   为 null；不跨 ticker 回填。
 - INV-A：已登记；A-FAIL/A-XTALK 覆盖。
+- SEC-01：失败原因不得泄露上游异常原文或凭证。
 - 未改 graph/agents/eligibility/CLI/provider/prompt；不触发 safety-critical
   路径的 ADR+独立安全评审要求，但仍需非作者最终评审。
 
+### 审查发现
+
+1. **P1 — 上游异常原文进入公开结果和工件。** `_failure_reason` 拼接
+   `str(exc)`，导致 synthetic credential URL/token/账户标记进入
+   `failure_reason`、Markdown 和 JSON。违反 A-IC-001 §3 与 SEC-01。要求固定
+   错误码和安全文案，并断言 PARTIAL 下另一报告保留、三处输出无敏感标记。
+2. **P1 — 结果身份和报告归属缺少校验。** `run_one` 直接采信 graph 返回状态；
+   AAPL 收到 MSFT 状态仍可 SUCCESS 并发布 Sell；MSFT 目录报告或 `notes.md`
+   也可被当成 AAPL 完整报告。要求在保存前核对 ticker/date，在发布前核对
+   `complete_report.md` 文件名和 ticker 目录归属，错误行三字段为 null。
+3. **P2 — 多行 Executive Summary 只保留首行。** 需要提取到下一节之前的完整
+   摘要段，再折叠、单行化、截断 500 字符，并补多行/标题后换行/缺省回退测试。
+4. **P2 — 接受 crypto 标的后使用股票管线。** `btcusd`/`BTC-USD` 被接受但
+   `propagate` 使用默认 stock。A 范围随后限定为仅股票，要求预检拒绝
+   Crypto/Forex/Futures/Index 并同步契约和测试。
+
 ### 代码与测试
 
-- 仅新增编排/汇总；无新增运行时依赖。
-- 离线 fake graph；30 个 comparison 测试在隔离本地运行通过。
-- 覆盖两成功、REVIEW、第一/第二/双失败、save 失败、MISSING rating、
-  输入错误、归一化、XTALK、manifest 一致性。
+- 仅新增编排/汇总；无新增运行时依赖；CLI 属后续协调集成。
+- 审查 head：30 个 comparison 测试通过；修复分支：38 个 comparison 测试通过。
+- 修复后覆盖异常脱敏、身份/归属校验、多行摘要、stock-only 拒绝、两成功、
+  REVIEW、第一/第二/双失败、save 失败、MISSING rating、输入错误、XTALK、
+  manifest 一致性。
 - 本地缺少 yfinance，完整 conftest/全回归未在本地完成；以 CI Python 3.13 为准。
 
 ### 运行元数据
@@ -567,7 +586,7 @@ approve application implementation or merge.
 - 未改 `src/tradingagents/graph/`、`src/tradingagents/agents/`、
   `eligibility.py`。
 - 输入校验先于任何 graph 运行；失败项不携带有效评级。
-- 无密钥、凭证 URL 或账户数据进入报告。
+- 修复后失败原因只含固定安全文案；无密钥、凭证 URL 或账户数据进入报告。
 
 ### 效率
 
@@ -577,22 +596,78 @@ approve application implementation or merge.
 
 ### 验证证据
 
-- `PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline`
-  → 30 passed。
-- `python -m py_compile src/tradingagents/enhancements/comparison.py test/offline/test_comparison.py`
-  → 通过。
-- `ruff check .`（临时 venv，ruff 0.17.6）→ All checks passed。
-- `python scripts/check_governance.py` → 通过。
-- `git diff --check` → 通过。
-- 未运行：完整本地 conftest/全回归（缺 yfinance）、CI Python 3.13 全量。
-- `comparison.py` 不在当前 CI mypy 覆盖范围；mypy 仅覆盖治理脚本。
-
-### 发现
-
-- 本地审查未发现新的阻塞性问题；最终结论由独立评审人填写。
+- 审查 head 隔离运行：
+  `PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -q --tb=line --disable-warnings`
+  → 1562 passed、29 failed、1 skipped、1 deselected、100 subtests passed；
+  29 个失败均为 C `test_manifest.py` 预期红测，A 的 30 项通过。
+- 修复分支：
+  `PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline`
+  → 38 passed。
+- 本地治理检查 `--base 41e1b0b`、全仓 Ruff、治理脚本 mypy、pip check、
+  `git diff --check` 均通过；PR/push CI 的治理、Ruff、干净安装和 safety review
+  通过，测试作业失败仅来自 C 红测。
+- 临时离线探针复现前 3 项问题；真实上游报告写入器的双成功对照通过。
 
 ### 决定
 
+**CHANGES REQUIRED。**
+
+修复状态：P1 异常脱敏、P1 身份/归属校验、P2 多行摘要、P2 stock-only 范围已在
+`feature/A-comparison-review-fixes` 实现，38 个 A 测试本地通过；契约/追踪矩阵/
+bug diary/AI 日志正在更新到 draft-0.4。当前等待独立非作者复审；在新 head 通过
+复审前不得合并。
+
+## PR #8 · A 比较模块修复复审 · 2026-11-23
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **PR:** #8 — https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/8
+- **Reviewer:** OpenCode（按用户请求进行非作者复审）
+- **Base:** `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`
+- **Reviewed head:** `094e2a700f56144551261bfcabc5e15bff3efcac`
+- **Date:** 2026-11-23
+- **Scope:** FR-A、NFR-A、INV-A、SEC-01；ADR-001、ADR-003、A-IC-001 draft-0.4
+
+### 上轮整改核对
+
+- 异常原文泄露已修复：稳定错误码 + 固定安全文案，三个公开输出无敏感标记。
+- 状态身份校验已生效：错 ticker/错日期在保存前返回
+  `RESULT_IDENTITY_MISMATCH`，三个结果字段为 `null`。
+- 多行 Executive Summary 已修复：完整提取到下一节，再折叠/截断。
+- stock-only 常见输入已拒绝，但非美元 crypto 仍有遗漏。
+
+### 本轮发现
+
+1. **P1 — 报告归属检查先于路径解析，仍可发布另一 ticker 的报告。**
+   - `run_one` 只在原始 `saved_path` 上检查文件名和父目录前缀，
+     `_relative_report_path` 随后才 `resolve()`，最终发布路径未重新校验。
+   - 目录符号链接 `reports/AAPL_<stamp>` → `reports/MSFT_<stamp>` 时，AAPL
+     仍为 `SUCCESS`。
+   - 文件符号链接 `AAPL/complete_report.md` → `MSFT/notes.md` 时，公开路径
+     变成 MSFT 的 `notes.md`。
+   - 要求对 resolved 后路径统一检查结果根、精确
+     `reports/{ticker}_{stamp}/complete_report.md` 结构和归属。
+2. **P2 — stock-only 预检漏掉非美元计价 crypto。**
+   - `BTC-EUR`、`ETH-GBP`、`BTC-JPY` 通过预检并以 `asset_type="stock"`
+     写入成功工件。
+   - 要求补齐 crypto base + quote 识别，或与 D 明确可确定验证的股票输入范围；
+     测试需覆盖两个输入位置、零 graph/save 调用和零工件。
+
+### 验证
+
+- 审查 head：A 专项 38 passed；全量 1570 passed、29 failed、1 skipped、
+  1 deselected、100 subtests passed；29 项均为 C `test_manifest.py` 预期红测。
+- 独立探针：5 failed、6 passed；失败对应目录/文件符号链接和非美元 crypto。
+- 修复后：A 专项 40 passed；`py_compile`、Ruff、治理、`git diff --check`
+  通过；完整 CI 待新 head 重跑。
+- 29 项 C 基线红测不归因于 A，C 测试未被修改。
+
+### 决定
+
+**CHANGES REQUIRED。**
+
+符号链接归属和 non-USD crypto 两项修复已在
+`feature/A-comparison-review-fixes` 实现，A 的 40 项测试本地通过，契约/追踪/
+bug diary/AI 日志已更新。当前等待独立非作者复审；新 head 通过复审前不得合并。
 **PENDING — reviewer to fill.** 评审人须给出 `APPROVE`、`CHANGES REQUIRED` 或 `REJECT`。
 ## PR #6 · B 分支同步与提交边界审查 · 2026-11-23
 
@@ -971,6 +1046,55 @@ schema/失败状态缺陷仍阻止批准。请先补充独立回归并修复上�
 - 本轮按用户要求**未向 GitHub 发布 comment 或 review**。完整验证见[本轮复审记录](verification/pr6-review-005.md)。TUI `/export` 待人工执行。
 
 **APPROVE。** 上一轮唯一未解决项已修复。此意见仅针对 PR 当前 head 的 B 代码审查范围，不代表全量 CI 全绿，也未执行合并。
+
+## PR #8 · 第二轮复审 · `7242599` · 2026-11-23
+
+- **仓库 / PR：** [sui-feng-cb/CS5351-TradingAgents #8](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/8)
+- **审查人：** OpenCode，按用户要求针对本次提交代码复审；未向 GitHub 发布 comment 或 review。
+- **Base：** `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`；上轮 head：`094e2a700f56144551261bfcabc5e15bff3efcac`。
+- **Reviewed head：** `72425994e6b923aeb78ce2b505564e7978c0aa25`。
+- **范围：** FR-A、NFR-A、INV-A、SEC-01，ADR-001/003，A-IC-001 draft-0.4。核对本 PR 三个提交、相对 base 的全部 7 文件差异，重点审查新增提交 `7242599`。
+- **人工限定：** 暂时忽略未同步 main 导致的两个文档冲突，不以此要求本轮代码返工。主工作区保持 `main` / `0a48402`，在隔离工作树验证固定 PR head。
+
+### 上轮发现复验
+
+1. **P1 报告归属问题已修复。** `_relative_report_path` 拒绝报告文件和直接父目录符号链接，使用 `resolve(strict=True)` 后检查结果根、三段相对路径、精确 ticker 与时间戳格式以及 `complete_report.md` 文件名。上轮目录链接到 MSFT 报告、文件链接到 MSFT `notes.md` 的负例均返回 `FAILED / REPORT_ATTRIBUTION_FAILED`，评级、摘要、路径为 `null`；比较为 `PARTIAL`，另一标的报告保留。独立探针还确认另一标的报告内容正确。
+   [实现](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/72425994e6b923aeb78ce2b505564e7978c0aa25/src/tradingagents/enhancements/comparison.py#L269-L295) · [正式入口回归](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/72425994e6b923aeb78ce2b505564e7978c0aa25/test/offline/test_comparison.py#L966-L986)
+2. **P2 非美元 crypto 问题已修复。** 增加已知 crypto base 与常见报价币种组合识别。`BTC-EUR`、`ETH-GBP`、`BTC-JPY` 均在预检返回 `UNSUPPORTED_ASSET_TYPE`；正式测试覆盖两个输入位置、零 graph/save 调用和零比较工件，`BRK-B` 股票对照通过。实现与本次 draft-0.4 明列的符号识别范围一致。
+   [实现](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/72425994e6b923aeb78ce2b505564e7978c0aa25/src/tradingagents/enhancements/comparison.py#L154-L178) · [输入回归](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/72425994e6b923aeb78ce2b505564e7978c0aa25/test/offline/test_comparison.py#L989-L1010)
+3. **此前修复未回归。** 异常固定安全文案、错 ticker/日期拒绝、多行摘要、REVIEW 成功语义及两个单失败方向的报告保留测试继续通过。真实上游报告写入器的正常双股票对照、摘要标题后换行和空正文 fallback 对照也通过。
+
+### 本轮代码审查意见
+
+**未发现新的阻塞性代码问题。** 路径归属判断集中到最终路径处理函数，专用异常映射为固定公开原因；输入预检仍在任何 graph 调用和工件写入之前。新增正式回归使用真实符号链接和公开比较入口。继续复用上游分析及报告保存，无新增运行时依赖、provider 或模型调用，比较 ID、UTC 时间和不可变结果派生 Markdown/manifest 的方式保持一致。C 的验收文件相对 base 未变。
+
+非阻塞记录：远端 PR 描述仍写 38 项旧专项结果，可更新为新 head 的 40 项及本轮验证摘要；这不影响本轮代码通过结论。
+
+### 验证证据
+
+在隔离工作树 `/tmp/opencode/pr8-review-7242599` 使用项目 Python 3.13.18；`<项目 Python>` 为主仓库 `.venv/bin/python`：
+
+```bash
+PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest test/offline/test_comparison.py -q --tb=line --disable-warnings
+PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -c pyproject.toml /tmp/opencode/test_pr8_review.py -q --tb=short --disable-warnings
+PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -q --tb=line --disable-warnings
+<项目 Python> scripts/check_governance.py --base c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+<项目 Python> -m ruff check .
+<项目 Python> -m mypy scripts/check_governance.py
+<项目 Python> -m pip check
+git diff --check c75bd98...HEAD
+git diff --quiet c75bd98 HEAD -- test/offline/test_manifest.py
+```
+
+- **A 专项 40 passed；上轮独立探针 11 passed（上轮为 5 failed、6 passed）。**
+- **完整默认离线套件：1572 passed、29 failed、1 skipped、1 deselected、100 subtests passed。** 29 项全部来自 C manifest 模块/CLI 尚未实现的既有验收，没有 A 或其他既有套件新增失败。
+- 带 base 的治理、全仓 Ruff、治理脚本 mypy、`pip check`、PR 差异空白及 C 测试未改检查通过；mypy 仅覆盖治理脚本。
+- 远端最新 [CI run 45195153994](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45195153994) 的测试任务同样为 **29 failed、1572 passed**，逐项失败均属于 `test_manifest.py`；治理、Ruff、clean-install smoke 通过。读取命令：`gh run view 45195153994 --job 137763507575 -R sui-feng-cb/CS5351-TradingAgents --log-failed`。
+- 当前 GitHub 无已提交的 review。完整 TUI `/export` 仍需人工导出并补实际链接；本轮只记录真实验证和人工限定，没有生成替代 transcript。
+
+### 结论
+
+**APPROVE。** 上轮两个未解决项均已修复并通过原独立负例，新增正式回归与完整回归结果支持本轮代码通过。建议通过 PR #8 当前 head 的代码审查。按委托，两个文档冲突暂不纳入本轮判断；此结论限于上述提交代码，不表示当前冲突已解决、完整 CI 已全绿、D 的契约确认已完成或 GitHub 已获批准。未执行提交、推送或合并。
 
 ## Future review records
 
