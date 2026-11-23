@@ -29,9 +29,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
-
 from openai import OpenAI  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
