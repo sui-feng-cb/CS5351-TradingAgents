@@ -8,7 +8,7 @@ requirements:
     type: functional
     owner: A
     status: planned
-    statement: Analyze exactly two distinct tickers on one date and save a comparison report with per-ticker state, authoritative rating, summary and report link.
+    statement: "Analyze exactly two distinct tickers on one date and save a comparison report with per-ticker state, authoritative rating, summary and report link. Acceptance owner: D; contract approver: D."
     priority: Must
     tradeoff: Sequential existing graph calls; no portfolio simulation.
     source: project-requirements section 4
@@ -20,7 +20,7 @@ requirements:
     type: quality
     owner: A
     status: planned
-    statement: Preserve the successful ticker report whenever the other ticker fails.
+    statement: "Preserve the successful ticker report whenever the other ticker fails. Acceptance owner: D; contract approver: D."
     priority: Must
     tradeoff: Explicit partial results instead of whole-request failure.
     source: project-requirements section 5
