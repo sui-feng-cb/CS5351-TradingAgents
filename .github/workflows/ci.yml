@@ -70,3 +70,18 @@ jobs:
         # The repo is fully clean under the strict select, so we lint everything
         # (generated results/ is excluded via pyproject extend-exclude).
         run: ruff check .
+
+  b-module:
+    name: B-module offline tests (FR-B / NFR-B)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run B-module offline tests (no network / API)
+        run: pytest test/offline/test_events.py -q

@@ -231,5 +231,3 @@ reports/
 .opencode/package.json
 .opencode/bun.lock*
 *.mp4
-# Complete native session backup stays local until transcript privacy review.
-/transcripts/raw/initialization-session.json
