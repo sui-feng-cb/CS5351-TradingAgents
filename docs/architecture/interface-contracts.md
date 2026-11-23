@@ -3,7 +3,9 @@
 Status: A-IC-001 is at draft-0.4 amendment under CHANGES REQUIRED fix review.
 The draft-0.3 baseline was frozen on 2026-11-23. Contract approver and
 acceptance owner: D. Member A approved the plan and tests-first intent.
-Independent code review remains pending. B–C contracts remain proposals. The D
+Independent code review remains pending. FR-C/NFR-C (the run manifest and
+`manifest query`) are implemented locally on the C branch; the C implementation
+PR's independent review is pending. B remains a proposal. The D
 evaluator and graph interface are implemented and locally tested against the
 merged PR #2 test contract. Remote CI, independent safety review and integration
 review remain pending.
@@ -23,26 +25,49 @@ review remain pending.
   code version, configured providers/models/analysts, status and relative paths.
   Unknowns are explicit. Query is read-only and tolerates individual bad files.
   Storage is one `run_manifest.json` per run directory plus a read-only local
-  scan (not a shared index). Contract below is a tests-first proposal awaiting
-  non-C approval (`docs/testing/c-manifest-test-plan.md`).
+  scan (not a shared index). **Implemented locally** in
+  `tradingagents.enhancements.manifest` (47 C acceptance cases; the
+  implementation PR still needs an independent non-C review); the
+  machine-readable schema is
+  `docs/architecture/run-manifest-v1.schema.json` (Draft 2020-12). A few
+  interface items still await team confirmation, including the
+  reused-custom-report-directory policy (see below).
 
-  ### C manifest v1 proposal
+  ### C manifest v1
 
-  - One manifest per execution attempt; `run_id` is a fresh UUID per attempt.
-  - Frozen field whitelist: schema_version, run_id, ticker, asset_type,
-    trade_date, as_of, started_at, finished_at, code_version, analysts, models,
-    configured_data_vendors, status, reports, error, unknown_fields. Extra
-    top-level keys are rejected.
-  - `status` is `running | succeeded | failed`; analysis outcome and report-save
-    outcome are expressed separately, not as one overloaded field.
-  - UTC-aware ISO-8601 timestamps; `trade_date`/`as_of` remain `YYYY-MM-DD`.
-  - `models` validates per-tier provider/model; `configured_data_vendors` is the
-    source configuration, not per-request provenance.
+  - One manifest per execution attempt; `run_id` is a fresh UUID per attempt, at
+    `<results_root>/<ticker>/<YYYY-MM-DD>/runs/<uuid>/run_manifest.json`.
+  - Frozen field whitelist (16 top-level fields): schema_version, run_id, ticker,
+    asset_type, trade_date, as_of, started_at, finished_at, code_version,
+    analysts, models, configured_data_vendors, status, reports, error,
+    unknown_fields. Extra top-level keys are rejected.
+  - Nullable: `finished_at` (running), `code_version` (unknown), `models`
+    (unknown), `error` (null when neither the analysis nor a requested report
+    save failed). `trade_date`/`as_of` are `YYYY-MM-DD`;
+    `started_at`/`finished_at` are UTC-aware ISO-8601.
+  - `status` records the analysis result (`running | succeeded | failed`);
+    `error` separately records a failure — either the analysis
+    (`analysis_failed`) or, when the analysis succeeded but the report could not
+    be saved, `report_save_failed` (message `Report save failed.`). A skipped
+    save is `error: null`. The two outcomes are not overloaded onto one field.
+  - `models` validates per-tier `provider`/`model` only (no endpoints/keys);
+    `configured_data_vendors` is the filtered source configuration, not
+    per-request provenance.
   - Errors store a fixed code plus safe text; no traceback blob, no secret.
-  - `reports` paths are relative to the results root and are the paths
-    `save_reports` actually returned; a skipped save is `null`; a reused custom
-    save path updates the existing record by explicit run association (team
-    confirmation pending).
+  - `reports` is a required top-level object whose two keys
+    (`complete_report_md`, `complete_report_html`) are **optional** and may be
+    `null`; each present value is a path **relative to the results root** that
+    `save_reports` actually returned. Unknown report keys are rejected. Each CLI
+    analysis writes its own manifest in its own attempt directory; when a reports
+    directory is reused, how stale report references from the earlier run are
+    handled is still to be confirmed by the team.
+  - **Path containment is checked at runtime, not by the schema.** On query, each
+    manifest and each declared report path is resolved (symlinks included) and
+    must stay within the results root; an out-of-root path warns and the record
+    or report is skipped. On write, the CLI resolves the target manifest path and
+    refuses to write outside the results root before creating any directory. The
+    JSON Schema can express types and relative-string shape but not filesystem
+    containment, so that invariant lives in code.
   - Query is read-only; bad JSON, unknown schema_version, missing declared
     reports and out-of-root paths each warn and the scan continues; no report is
     modified or deleted. A missing-manifest warning is only for recognizable run
@@ -50,7 +75,8 @@ review remain pending.
   - Same-day reruns and checkpoint resumes keep prior records and do not change
     existing checkpoint behavior.
   - Team-confirmation items not yet locked: A/Python run-association interface,
-    backtest coverage, and the reused-custom-path policy.
+    backtest coverage, the reused-custom-path policy, the `analysis_failed` /
+    `Analysis failed.` fixed values and the CLI `matches`/`warnings` outer shape.
 - D: market execution status and snapshot date are machine metadata, not inferred
   from model text. The proposed public mode is `standard` (default; preserve
   upstream behavior) or `team` (apply the qualification gate). A team-mode run

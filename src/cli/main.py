@@ -1,3 +1,13 @@
+"""TradingAgents command-line interface.
+
+The analysis, backtest, interactive-prompt and model-SDK imports are deferred to
+their commands' bodies so a read-only command such as ``manifest query`` starts
+without loading the graph, data vendors or model clients. The names the tests
+patch (``run_analysis``, ``run_backtest``, ``summarize``) stay as module
+attributes resolved at call time.
+"""
+
+import json
 import sys
 from enum import StrEnum
 from typing import Annotated
@@ -5,14 +15,8 @@ from typing import Annotated
 import typer
 from rich.markup import escape
 
-from cli.display import console
-from cli.models import AnalystType, AssetType
-from cli.prompts import filter_analysts_for_asset_type, parse_analysts
-from cli.run import run_analysis
-from tradingagents.backtest import iter_grid, run_backtest, summarize
+from cli.console import console
 from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.llm_clients.openai_client import SIGNED_IN_PROVIDERS
-from tradingagents.portfolio import load_portfolio
 
 # prompt_toolkit's win32 output module is importable only on Windows (it asserts
 # the platform at import time), so gate on the platform rather than catching the
@@ -26,11 +30,37 @@ if sys.platform == "win32":  # pragma: no cover - platform dependent
 else:
     _NO_CONSOLE_ERRORS = ()
 
+# Providers the user signs in to instead of setting an API key. Kept as a light
+# literal so the CLI starts without importing the model client that derives it;
+# the login/logout commands still authenticate via the real chatgpt_auth path.
+_SIGNED_IN_PROVIDERS = ("chatgpt",)
+
 app = typer.Typer(
     name="TradingAgents",
     help="TradingAgents CLI: Multi-Agents LLM Financial Trading Framework",
     add_completion=True,  # Enable shell completion
 )
+
+
+def run_analysis(*args, **kwargs):
+    """Analyze one ticker (FR: deferred import). Kept patchable as ``cli.main.run_analysis``."""
+    from cli.run import run_analysis as _run_analysis
+
+    return _run_analysis(*args, **kwargs)
+
+
+def run_backtest(*args, **kwargs):
+    """Run a backtest sweep (deferred import). Patchable as ``cli.main.run_backtest``."""
+    from tradingagents.backtest import run_backtest as _run_backtest
+
+    return _run_backtest(*args, **kwargs)
+
+
+def summarize(*args, **kwargs):
+    """Summarize a backtest result (deferred import). Patchable as ``cli.main.summarize``."""
+    from tradingagents.backtest import summarize as _summarize
+
+    return _summarize(*args, **kwargs)
 
 
 class DecisionMode(StrEnum):
@@ -96,6 +126,8 @@ def analyze(
         console.print(f"[yellow]Cleared {n} checkpoint(s).[/yellow]")
     portfolio_context = None
     if portfolio:
+        from tradingagents.portfolio import load_portfolio
+
         try:
             portfolio_context = load_portfolio(portfolio)
         except ValueError as exc:
@@ -145,6 +177,11 @@ def backtest(
 ):
     """Score past decisions over a grid of tickers and dates."""
 
+    from cli.models import AnalystType, AssetType
+    from cli.prompts import filter_analysts_for_asset_type, parse_analysts
+    from tradingagents.backtest import iter_grid
+    from tradingagents.portfolio import load_portfolio
+
     try:
         dates = iter_grid(start, end, every)
         book = load_portfolio(portfolio) if portfolio else None
@@ -183,7 +220,7 @@ def backtest(
 
 
 # The plans `login` and `logout` take: the providers signed in to, not keyed.
-Plan = StrEnum("Plan", {name: name for name in SIGNED_IN_PROVIDERS})
+Plan = StrEnum("Plan", {name: name for name in _SIGNED_IN_PROVIDERS})
 
 
 @app.command()
@@ -214,6 +251,56 @@ def logout(plan: Annotated[Plan, typer.Argument(help="The plan to sign out of")]
                       "it stays valid at OpenAI until it expires.[/yellow]")
     else:
         console.print("Not signed in to ChatGPT.")
+
+
+@app.command()
+def manifest(
+    action: Annotated[str, typer.Argument(help="Subcommand: query")],
+    results_dir: str = typer.Option(
+        None, "--results-dir",
+        help="Results root to scan; defaults to the configured results directory"),
+    ticker: str = typer.Option(None, "--ticker", help="Only runs for this ticker"),
+    date: str = typer.Option(None, "--date", help="Only runs on this YYYY-MM-DD analysis date"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print a JSON object {matches, warnings} to stdout"),
+):
+    """Read the run manifests under a results root (FR-C). Never starts an analysis."""
+    if action != "query":
+        console.print(
+            f"[red]Unknown manifest subcommand: {action!r}. Try: manifest query[/red]")
+        raise typer.Exit(code=2)
+
+    # Imported here so the query path never pulls in the analysis graph, backtest
+    # or data vendors.
+    from tradingagents.enhancements.manifest import query_manifests
+
+    root = results_dir or DEFAULT_CONFIG["results_dir"]
+    outcome = query_manifests(root, ticker=ticker or None, date=date or None)
+
+    if json_output:
+        matches = [
+            {
+                "run_id": m.run_id,
+                "ticker": m.ticker,
+                "trade_date": m.trade_date,
+                "status": m.status,
+                "reports": m.reports,
+                "manifest_path": str(m.manifest_path),
+            }
+            for m in outcome.matches
+        ]
+        typer.echo(json.dumps({"matches": matches, "warnings": list(outcome.warnings)}))
+        return
+
+    if not outcome.matches:
+        console.print("[dim]No matching runs.[/dim]")
+    for m in outcome.matches:
+        console.print(f"{m.ticker} {m.trade_date} [{m.status}] {m.run_id}")
+        for key, value in m.reports.items():
+            if value is not None:
+                console.print(f"  {key}: {value}")
+    for warning in outcome.warnings:
+        console.print(f"[yellow]warning:[/yellow] {warning}")
 
 
 if __name__ == "__main__":
