@@ -30,6 +30,15 @@ _ALLOWED_RATINGS = frozenset(
     {"Buy", "Overweight", "Hold", "Underweight", "Sell", "REVIEW"}
 )
 _SUMMARY_FALLBACK = "Summary unavailable from upstream final state."
+_SAFE_FAILURE_MESSAGES = {
+    "GRAPH_FAILED": "Upstream analysis failed.",
+    "REPORT_SAVE_FAILED": "Upstream report save failed.",
+    "RESULT_IDENTITY_MISMATCH": "Result does not match the requested ticker or date.",
+    "REPORT_ATTRIBUTION_FAILED": "Report path does not belong to the requested ticker.",
+    "MISSING_OR_INVALID_FINAL_RATING": "No valid final rating was returned.",
+    "INTERNAL_ERROR": "Comparison processing failed.",
+}
+_NON_STOCK_SUFFIXES = ("-USD", "-USDT", "-USDC", "-BTC", "-ETH")
 
 
 class _GraphLike(Protocol):
@@ -127,11 +136,26 @@ def _validate_analysis_date(value: object) -> str:
     return value
 
 
+def _is_stock_symbol(symbol: str) -> bool:
+    return not (
+        symbol.endswith(_NON_STOCK_SUFFIXES)
+        or symbol.endswith(("=X", "=F"))
+        or symbol.startswith("^")
+    )
+
+
 def _validate_inputs(
     ticker_a: object, ticker_b: object, analysis_date: object
 ) -> tuple[str, str, str]:
     canonical_a = _canonical_ticker(ticker_a, "ticker_a")
     canonical_b = _canonical_ticker(ticker_b, "ticker_b")
+    for symbol, field in ((canonical_a, "ticker_a"), (canonical_b, "ticker_b")):
+        if not _is_stock_symbol(symbol):
+            raise ComparisonInputError(
+                "UNSUPPORTED_ASSET_TYPE",
+                f"A supports stocks only; unsupported symbol: {symbol}",
+                field,
+            )
     if canonical_a == canonical_b:
         raise ComparisonInputError(
             "DUPLICATE_TICKER",
@@ -142,16 +166,15 @@ def _validate_inputs(
     return canonical_a, canonical_b, canonical_date
 
 
-def _failure_reason(code: str, exc: BaseException | None = None) -> str:
-    detail = str(exc).strip() if exc is not None else ""
-    return f"{code}: {detail}" if detail else code
+def _failure_reason(code: str) -> str:
+    message = _SAFE_FAILURE_MESSAGES.get(code, "Comparison failed.")
+    return f"{code}: {message}"
 
 
 def _failed(
     ticker: str,
     analysis_date: str,
     code: str,
-    exc: BaseException | None = None,
 ) -> SingleRunResult:
     return SingleRunResult(
         ticker=ticker,
@@ -160,7 +183,7 @@ def _failed(
         final_rating=None,
         summary=None,
         report_path=None,
-        failure_reason=_failure_reason(code, exc),
+        failure_reason=_failure_reason(code),
     )
 
 
@@ -179,11 +202,23 @@ def _normalize_summary(summary: str) -> str:
 
 
 def _executive_summary(text: str) -> str | None:
+    marker = "**Executive Summary**:"
+    collected: list[str] = []
+    collecting = False
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("**Executive Summary**:"):
-            return stripped.split(":", 1)[1].strip()
-    return None
+        if not collecting:
+            if stripped.startswith(marker):
+                collecting = True
+                remainder = stripped[len(marker):].strip()
+                if remainder:
+                    collected.append(remainder)
+            continue
+        if stripped.startswith("**") and "**:" in stripped:
+            break
+        collected.append(line)
+    summary = " ".join(" ".join(collected).split())
+    return summary or None
 
 
 def _first_paragraph(text: str) -> str | None:
@@ -233,8 +268,16 @@ def run_one(
     """Run one validated ticker and isolate its failure from the other ticker."""
     try:
         final_state, signal = graph.propagate(ticker, analysis_date)
-    except Exception as exc:
-        return _failed(ticker, analysis_date, "GRAPH_FAILED", exc)
+    except Exception:
+        return _failed(ticker, analysis_date, "GRAPH_FAILED")
+
+    if not isinstance(final_state, dict):
+        return _failed(ticker, analysis_date, "INTERNAL_ERROR")
+    if (
+        final_state.get("company_of_interest") != ticker
+        or final_state.get("trade_date") != analysis_date
+    ):
+        return _failed(ticker, analysis_date, "RESULT_IDENTITY_MISMATCH")
 
     try:
         rating = _authoritative_rating(final_state, signal)
@@ -245,18 +288,29 @@ def run_one(
                 "MISSING_OR_INVALID_FINAL_RATING",
             )
         summary = _summary_for(final_state, rating)
-    except Exception as exc:
-        return _failed(ticker, analysis_date, "INTERNAL_ERROR", exc)
+    except Exception:
+        return _failed(ticker, analysis_date, "INTERNAL_ERROR")
 
     try:
         saved = graph.save_reports(final_state, ticker)
-    except Exception as exc:
-        return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED", exc)
+    except Exception:
+        return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED")
+
+    try:
+        saved_path = Path(saved)
+        expected_prefix = f"{safe_ticker_component(ticker)}_"
+        if (
+            saved_path.name != "complete_report.md"
+            or not saved_path.parent.name.startswith(expected_prefix)
+        ):
+            return _failed(ticker, analysis_date, "REPORT_ATTRIBUTION_FAILED")
+    except Exception:
+        return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED")
 
     try:
         report_path = _relative_report_path(saved, graph.config["results_dir"])
-    except Exception as exc:
-        return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED", exc)
+    except Exception:
+        return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED")
 
     return SingleRunResult(
         ticker=ticker,

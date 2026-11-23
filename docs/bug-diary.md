@@ -23,6 +23,40 @@
   malformed registry syntax is not reported as a schema failure.
 - State: fixed locally; no commit or push. Contract remains DRAFT.
 
+## BUG-A-002 — upstream exception text leaked into public A artifacts
+
+- Requirements: FR-A, NFR-A, SEC-01; A-IC-001 §3.
+- Symptom: synthetic credential URL, token and account markers injected into
+  `propagate`/`save_reports` exceptions appeared in `failure_reason`, the
+  comparison Markdown and `comparison_manifest.json`.
+- Root cause: `_failure_reason` concatenated `str(exc)` into the public field.
+- Fix: removed exception text entirely; failures now use stable codes plus fixed
+  safe messages. Added propagation/save negative tests that assert no sensitive
+  marker reaches the result, Markdown or manifest, while a PARTIAL comparison
+  retains the other ticker's report.
+- Evidence: 38 comparison tests pass locally; `RUFF` and governance checks pass.
+- State: fixed on `feature/A-comparison-review-fixes`; independent re-review
+  pending.
+
+## BUG-A-003 — result identity and report attribution were not validated
+
+- Requirements: FR-A, NFR-A, INV-A; A-IC-001 §3.
+- Symptom: requesting AAPL while the graph returned MSFT state still produced
+  `SUCCESS` and published the returned rating. A report in the MSFT directory,
+  or a `notes.md` file, could also be accepted as AAPL's complete report.
+- Root cause: `run_one` trusted the input ticker label and did not compare the
+  returned `final_state` identity; the path check only verified existence and
+  containment under the results root.
+- Fix: before saving, require `company_of_interest == ticker` and
+  `trade_date == analysis_date`; otherwise fail closed as
+  `RESULT_IDENTITY_MISMATCH` without calling `save_reports`. After saving,
+  require `complete_report.md` and a parent directory prefixed by the requested
+  canonical ticker; otherwise `REPORT_ATTRIBUTION_FAILED`.
+- Evidence: wrong-ticker, wrong-date, MSFT-directory and `notes.md` negative
+  tests assert `FAILED`, null result fields and an intact other-ticker report.
+- State: fixed on `feature/A-comparison-review-fixes`; independent re-review
+  pending.
+
 ## BUG-D-003 — PR #3 found three qualification bypasses beyond the original suite
 
 - Requirements: FR-D, NFR-D, INV-D, BASE-01; ADR-002.

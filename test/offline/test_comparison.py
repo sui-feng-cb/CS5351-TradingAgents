@@ -16,6 +16,7 @@ import pytest
 from tradingagents.enhancements.comparison import (
     ComparisonInputError,
     SingleRunResult,
+    _validate_inputs,
     run_comparison,
     run_one,
 )
@@ -30,6 +31,14 @@ TABLE_HEADER = (
     "| ticker | analysis_date | status | final_rating | summary | "
     "report_path | failure_reason |"
 )
+SENSITIVE_TERMS = (
+    "sk-12345",
+    "https://fake.com?token=secret-token",
+    "ACCOUNT-SECRET",
+)
+SENSITIVE_EXCEPTION = " | ".join(SENSITIVE_TERMS)
+GRAPH_FAILED_SAFE = "GRAPH_FAILED: Upstream analysis failed."
+REPORT_SAVE_FAILED_SAFE = "REPORT_SAVE_FAILED: Upstream report save failed."
 
 
 def _pm_result(ticker: str, rating: str, summary: str) -> tuple[dict, str]:
@@ -152,6 +161,84 @@ class CallShapeGraph(FakeGraph):
     def save_reports(self, *args, **kwargs):
         self.save_call_shape.append((args, kwargs))
         return super().save_reports(*args, **kwargs)
+
+
+class SensitiveFailureGraph(FakeGraph):
+    """Raises exceptions whose text must never reach public artifacts."""
+
+    def __init__(
+        self,
+        results_root: Path,
+        *,
+        propagate_failure: str | None = None,
+        save_failures: set[str] | None = None,
+    ) -> None:
+        super().__init__(results_root)
+        self.propagate_failure = propagate_failure
+        self.secret_save_failures = set(save_failures or ())
+
+    def propagate(
+        self,
+        company_name: str,
+        trade_date: str,
+        asset_type: str = "stock",
+        portfolio=None,
+    ):
+        if company_name == self.propagate_failure:
+            self.propagate_calls.append((company_name, trade_date, asset_type, portfolio))
+            raise RuntimeError(SENSITIVE_EXCEPTION)
+        return super().propagate(company_name, trade_date, asset_type, portfolio)
+
+    def save_reports(
+        self,
+        final_state: dict,
+        ticker: str,
+        save_path=None,
+        html: bool = True,
+    ) -> Path:
+        if ticker in self.secret_save_failures:
+            self.save_calls.append((final_state, ticker, save_path, html))
+            raise OSError(SENSITIVE_EXCEPTION)
+        return super().save_reports(final_state, ticker, save_path, html)
+
+
+class AttributionGraph(FakeGraph):
+    """Returns a report path that does not belong to the requested ticker."""
+
+    def __init__(self, results_root: Path, *, kind: str) -> None:
+        super().__init__(results_root)
+        self.kind = kind
+
+    def save_reports(
+        self,
+        final_state: dict,
+        ticker: str,
+        save_path=None,
+        html: bool = True,
+    ) -> Path:
+        self.save_calls.append((final_state, ticker, save_path, html))
+        if self.kind == "msft_complete":
+            folder = self.results_root / "reports" / f"MSFT_{STAMP}"
+            filename = "complete_report.md"
+            owner = "MSFT"
+        else:
+            folder = self.results_root / "reports" / f"AAPL_{STAMP}"
+            filename = "notes.md"
+            owner = "AAPL"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / filename
+        path.write_text(
+            f"# Trading Analysis Report: {owner}\n\n"
+            f"marker:{owner}:complete\n",
+            encoding="utf-8",
+        )
+        return path
+
+
+def _assert_no_sensitive(texts: list[str]) -> None:
+    for text in texts:
+        for term in SENSITIVE_TERMS:
+            assert term not in text
 
 
 def _report_path(ticker: str) -> str:
@@ -506,7 +593,7 @@ def test_a_manifest_partial_failure_rows_and_overall_status(tmp_path):
     ("ticker_a", "ticker_b"),
     [
         ("aapl", " AAPL "),
-        ("XAUUSD", "GC=F"),
+        ("brk.b", " BRK.B "),
     ],
 )
 def test_a_input_duplicate_ticker_rejected_before_any_run(tmp_path, ticker_a, ticker_b):
@@ -568,16 +655,16 @@ def test_a_normalize_uses_canonical_tickers_for_calls_and_report_paths(tmp_path)
     results_root = tmp_path / "results"
     graph = FakeGraph(results_root)
 
-    result = run_comparison(graph, " cnc.to ", "btcusd", DATE)
+    result = run_comparison(graph, " cnc.to ", " brk.b ", DATE)
 
-    assert [row.ticker for row in result.tickers] == ["CNC.TO", "BTC-USD"]
+    assert [row.ticker for row in result.tickers] == ["CNC.TO", "BRK.B"]
     assert [row.report_path for row in result.tickers] == [
         _report_path("CNC.TO"),
-        _report_path("BTC-USD"),
+        _report_path("BRK.B"),
     ]
     assert graph.propagate_calls == [
         ("CNC.TO", DATE, "stock", None),
-        ("BTC-USD", DATE, "stock", None),
+        ("BRK.B", DATE, "stock", None),
     ]
 
 
@@ -725,3 +812,132 @@ def test_run_one_calls_upstream_with_exact_positional_arguments(tmp_path):
     assert result.report_path == _report_path("AAPL")
     assert result.report_path is not None
     assert (results_root / result.report_path).is_file()
+
+
+@pytest.mark.unit
+def test_a_propagate_exception_is_sanitized_in_all_artifacts(tmp_path):
+    """FR-A, NFR-A, INV-A, SEC-01: raw analysis errors must not leak."""
+    results_root = tmp_path / "results"
+    graph = SensitiveFailureGraph(results_root, propagate_failure="AAPL")
+
+    result = run_comparison(graph, "AAPL", "MSFT", DATE)
+
+    failed, success = result.tickers
+    assert failed.status == "FAILED"
+    assert failed.failure_reason == GRAPH_FAILED_SAFE
+    assert failed.final_rating is None
+    assert failed.summary is None
+    assert failed.report_path is None
+    assert success.status == "SUCCESS"
+    assert success.report_path is not None
+    report = results_root / success.report_path
+    assert report.is_file()
+    assert "marker:MSFT:complete" in report.read_text(encoding="utf-8")
+    assert [call[1] for call in graph.save_calls] == ["MSFT"]
+
+    markdown = (results_root / result.comparison_report_path).read_text(encoding="utf-8")
+    manifest = (results_root / result.manifest_path).read_text(encoding="utf-8")
+    _assert_no_sensitive([failed.failure_reason, markdown, manifest])
+
+
+@pytest.mark.unit
+def test_a_save_exception_is_sanitized_in_all_artifacts(tmp_path):
+    """FR-A, NFR-A, INV-A, SEC-01: raw save errors must not leak."""
+    results_root = tmp_path / "results"
+    graph = SensitiveFailureGraph(results_root, save_failures={"AAPL"})
+
+    result = run_comparison(graph, "AAPL", "MSFT", DATE)
+
+    failed, success = result.tickers
+    assert failed.status == "FAILED"
+    assert failed.failure_reason == REPORT_SAVE_FAILED_SAFE
+    assert failed.final_rating is None
+    assert failed.summary is None
+    assert failed.report_path is None
+    assert success.status == "SUCCESS"
+    assert success.report_path is not None
+    assert (results_root / success.report_path).is_file()
+    assert [call[1] for call in graph.save_calls] == ["AAPL", "MSFT"]
+
+    markdown = (results_root / result.comparison_report_path).read_text(encoding="utf-8")
+    manifest = (results_root / result.manifest_path).read_text(encoding="utf-8")
+    _assert_no_sensitive([failed.failure_reason, markdown, manifest])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("case", ["wrong_ticker", "wrong_date"])
+def test_a_identity_mismatch_fails_without_save(tmp_path, case):
+    """FR-A, NFR-A, INV-A: final_state must belong to the requested ticker/date."""
+    results_root = tmp_path / "results"
+    if case == "wrong_ticker":
+        state, signal = _pm_result("MSFT", "Sell", "MSFT summary.")
+    else:
+        state, signal = _pm_result("AAPL", "Buy", "AAPL summary.")
+        state["trade_date"] = "2026-01-16"
+    graph = FakeGraph(results_root, results={"AAPL": (state, signal)})
+
+    row = run_one(graph, "AAPL", DATE)
+
+    assert row.status == "FAILED"
+    assert row.failure_reason is not None
+    assert row.failure_reason.startswith("RESULT_IDENTITY_MISMATCH")
+    assert row.final_rating is None
+    assert row.summary is None
+    assert row.report_path is None
+    assert graph.save_calls == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("kind", ["msft_complete", "notes"])
+def test_a_report_attribution_mismatch_fails(tmp_path, kind):
+    """FR-A, NFR-A, INV-A: report path must be the requested ticker's report."""
+    results_root = tmp_path / "results"
+    graph = AttributionGraph(results_root, kind=kind)
+
+    row = run_one(graph, "AAPL", DATE)
+
+    assert row.status == "FAILED"
+    assert row.failure_reason is not None
+    assert row.failure_reason.startswith("REPORT_ATTRIBUTION_FAILED")
+    assert row.final_rating is None
+    assert row.summary is None
+    assert row.report_path is None
+    assert len(graph.save_calls) == 1
+
+
+@pytest.mark.unit
+def test_a_multiline_executive_summary_is_fully_extracted_and_collapsed(tmp_path):
+    """FR-A, NFR-A, INV-A: keep the whole summary section, then collapse it."""
+    results_root = tmp_path / "results"
+    state, signal = _pm_result("AAPL", "Buy", "ignored")
+    state["final_trade_decision"] = (
+        "**Executive Summary**: First line about entry risk.\n"
+        "Second line about position sizing and risk controls.\n\n"
+        "**Investment Thesis**: detailed thesis."
+    )
+    graph = FakeGraph(results_root, results={"AAPL": (state, signal)})
+
+    row = run_one(graph, "AAPL", DATE)
+
+    assert row.status == "SUCCESS"
+    assert row.summary == (
+        "First line about entry risk. "
+        "Second line about position sizing and risk controls."
+    )
+
+
+@pytest.mark.unit
+def test_a_crypto_ticker_is_rejected_as_unsupported_asset_type(tmp_path):
+    """FR-A, NFR-A, INV-A: A accepts stocks only; crypto is rejected up front."""
+    results_root = tmp_path / "results"
+    for crypto_ticker in ("btcusd", "BTC-USD"):
+        with pytest.raises(ComparisonInputError) as excinfo:
+            _validate_inputs(crypto_ticker, "MSFT", DATE)
+        assert excinfo.value.code == "UNSUPPORTED_ASSET_TYPE"
+
+        graph = FakeGraph(results_root)
+        with pytest.raises(ComparisonInputError) as run_excinfo:
+            run_comparison(graph, crypto_ticker, "MSFT", DATE)
+        assert run_excinfo.value.code == "UNSUPPORTED_ASSET_TYPE"
+        _assert_no_graph_calls(graph)
+        _assert_no_artifacts(results_root)

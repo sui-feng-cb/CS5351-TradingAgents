@@ -1,17 +1,20 @@
 # Interface contracts
 
-Status: A-IC-001 is formally frozen. Contract approver and acceptance owner: D.
-Plan and tests-first intent approved by member A on 2026-11-23. B–C contracts
-remain proposals. The D evaluator and graph interface are implemented and
-locally tested against the merged PR #2 test contract. Remote CI, independent
-safety review and integration review remain pending.
+Status: A-IC-001 is at draft-0.4 amendment under CHANGES REQUIRED fix review.
+The draft-0.3 baseline was frozen on 2026-11-23. Contract approver and
+acceptance owner: D. Member A approved the plan and tests-first intent.
+Independent code review remains pending. B–C contracts remain proposals. The D
+evaluator and graph interface are implemented and locally tested against the
+merged PR #2 test contract. Remote CI, independent safety review and integration
+review remain pending.
 
 - A: exactly two distinct tickers, shared canonical date/config; sequentially call
   upstream propagate/save_reports, isolating each run. Return per-ticker status,
   authoritative rating, summary and relative report path, plus a comparison
   report and required `comparison_manifest.json`; input-level validation errors
   produce no artifacts, while per-ticker run failures still produce both
-  artifacts (A-IC-001, frozen 2026-11-23; see the A-IC-001 contract and section 7).
+  artifacts (A-IC-001 draft-0.4; draft-0.3 froze on 2026-11-23; see the
+  A-IC-001 contract and section 7).
 - B: 2–3 tickers, window ≤7 days, ≤5 records per ticker. Each record contains a
   run-scoped evidence ID, ticker, published_at, source and title/snippet. Output
   groups reference input IDs; deterministic validation requires ≥2 tickers and
@@ -124,15 +127,19 @@ Reserve `test/offline/test_comparison.py`, `test_events.py`, `test_manifest.py`,
 `test_eligibility.py` for owners A, B, C, D respectively. Shared CLI/graph/report
 files require coordinated integration PRs; no direct private cross-module imports.
 
-## A-IC-001 contract (frozen 2026-11-23)
+## A-IC-001 contract (draft-0.4 amendment)
 
-Status: FROZEN; contract approver and acceptance owner: D (see section 7).
-Internal subsections 1–6 belong to A-IC-001. Tests-first is authorized;
-implementation waits for approval of the written tests.
+Status: DRAFT-0.4 AMENDMENT — contract approver/acceptance owner: D; member A
+approved the plan and tests-first intent; independent code review pending
+(CHANGES REQUIRED fixes in progress). Draft-0.3 remains the frozen baseline.
+Internal subsections 1–6 belong to A-IC-001. No merge before D confirms this
+amendment and a non-author re-review completes.
 
 ### 1. 范围
 
 - 恰好两个不同且有效的 ticker，以及一个共同分析日期。
+- **A 仅支持股票（Stock）。** Crypto、Forex、Futures、Index 等非股票标的在
+  输入校验阶段以 `UNSUPPORTED_ASSET_TYPE` 拒绝，不启动 graph，不生成工件。
 - 顺序调用上游现有 graph 两次；不新增 provider、不并行、不做组合模拟。
 - 每个 ticker 保存自己的完整上游报告；另生成一份比较 Markdown。
 - 强制同时生成 `comparison_manifest.json`；它是比较级工件，不是 C 的
@@ -165,6 +172,29 @@ implementation waits for approval of the written tests.
   `comparisons/{comparison_id}/comparison.md`。
 - 测试用 `Path(config["results_dir"]) / report_path` 解析，不依赖机器绝对路径。
 
+#### 2.1 Python 调用与相对路径解析
+
+```python
+from pathlib import Path
+
+from tradingagents.enhancements.comparison import run_comparison
+
+results_root = Path(graph.config["results_dir"])
+result = run_comparison(graph, "AAPL", "MSFT", "2026-11-23")
+
+comparison_md = results_root / result.comparison_report_path
+comparison_manifest = results_root / result.manifest_path
+for row in result.tickers:
+    report_md = results_root / row.report_path if row.report_path else None
+```
+
+- `report_path`、`comparison_report_path`、`manifest_path` 全部相对
+  `config["results_dir"]`。
+- 调用方必须用 `Path(config["results_dir"]) / relative_path` 解析；契约不记录
+  绝对路径，也不保证可跨机器移植绝对路径。
+- `row.report_path` 只在 `SUCCESS` 时非空，且指向该 ticker 的
+  `complete_report.md`。
+
 ### 3. status / rating、空值与 summary
 
 | 场景 | status | final_rating | 说明 |
@@ -173,14 +203,22 @@ implementation waits for approval of the written tests.
 | 上游运行完成，权威评级为 `REVIEW` | `SUCCESS` | `REVIEW` | 运行成功；`REVIEW` 是评级，不是失败。 |
 | graph 抛错 | `FAILED` | `null` | 运行异常；不保留部分评级。 |
 | 报告保存失败/`complete_report.md` 缺失 | `FAILED` | `null` | 结果不完整，整行按失败处理。 |
+| 结果状态不属于请求 ticker/日期 | `FAILED` | `null` | `RESULT_IDENTITY_MISMATCH`；不调用 `save_reports`。 |
+| 返回报告不属于请求 ticker | `FAILED` | `null` | `REPORT_ATTRIBUTION_FAILED`。 |
 | 运行完成但没有可用权威评级 | `FAILED` | `null` | 原因码 `MISSING_OR_INVALID_FINAL_RATING`；不得从正文猜评级。 |
 
 - `status=FAILED` 时 `final_rating`、`summary`、`report_path` 必须为 `null`；
   不得填另一 ticker 的评级、旧运行评级或模型正文中的评级。
 - 空值统一为 JSON `null`；Markdown 中写字面量 `null`。禁止 `""`、`N/A`、`-`、“无”。
-- 失败原因码：`GRAPH_FAILED`、`REPORT_SAVE_FAILED`、
-  `MISSING_OR_INVALID_FINAL_RATING`、`INTERNAL_ERROR`；格式
-  `<CODE>` 或 `<CODE>: <sanitized detail>`，不得含密钥、凭证 URL、账户数据。
+- **失败原因固定文案**：`failure_reason` 只允许“稳定错误码 + 预设安全文案”，
+  不得包含 `str(exc)`、traceback、上游异常原文、凭证 URL、token 或账户数据。
+  当前映射：
+  - `GRAPH_FAILED: Upstream analysis failed.`
+  - `REPORT_SAVE_FAILED: Upstream report save failed.`
+  - `RESULT_IDENTITY_MISMATCH: Result does not match the requested ticker or date.`
+  - `REPORT_ATTRIBUTION_FAILED: Report path does not belong to the requested ticker.`
+  - `MISSING_OR_INVALID_FINAL_RATING: No valid final rating was returned.`
+  - `INTERNAL_ERROR: Comparison processing failed.`
 - 摘要提取不得把 `SUCCESS` 改为 `FAILED`；删除 `SUMMARY_UNAVAILABLE` 失败码。
 
 `summary` 来源：final_state 没有独立 summary 字段；只有 `final_trade_decision`
@@ -190,13 +228,14 @@ implementation waits for approval of the written tests.
 |---|---|---|
 | team | `REVIEW` | 1. `eligibility_message`（由 `_eligibility_step` 写入）<br>2. 无则取 `final_trade_decision` 首个非空段落（首段截断）<br>3. 仍为空则固定 fallback `"Summary unavailable from upstream final state."` |
 | standard | `REVIEW` | 1. 取 `final_trade_decision` 首个非空段落（首段截断）；不假设 `eligibility_message` 存在<br>2. 仍为空则固定 fallback `"Summary unavailable from upstream final state."` |
-| 任意 | 五级评级 | 1. 取 `final_trade_decision` 中 `**Executive Summary**:` 段<br>2. 无则取首个非空段落（首段截断）<br>3. 仍为空则固定 fallback `"Summary unavailable from upstream final state."` |
+| 任意 | 五级评级 | 1. 取 `final_trade_decision` 中 `**Executive Summary**:` 开始、到下一个 `**...**:` 标题或文本末尾的完整段落<br>2. 无则取首个非空段落（首段截断）<br>3. 仍为空则固定 fallback `"Summary unavailable from upstream final state."` |
 
 - team-mode `REVIEW` 的 `final_trade_decision` 是 `REVIEW ... Reason codes: ...`
   通知，不含 Executive Summary，因此优先 `eligibility_message`。
 - standard-mode `REVIEW` 不保证有 `eligibility_message`，直接走首段截断。
 - 提取只做确定性文本处理：不新增 LLM 调用、不跨 ticker、空白折叠、单行、最多
   500 字符；`SUCCESS` 的 `summary` 必须非空。
+- 多行 Executive Summary 必须完整保留到下一节之前，不能只取标记所在首行。
 
 ### 4. `comparison_manifest.json`（强制）
 
@@ -225,9 +264,12 @@ implementation waits for approval of the written tests.
 - 必须恰好两个 ticker；空输入、单个、超过两个都拒绝。
 - 两个 ticker 在归一化并通过 `safe_ticker_component` 后必须不同；相等为
   `DUPLICATE_TICKER`。
+- 两个 canonical ticker 都必须是股票；Crypto、Forex、Futures、Index 等
+  非股票标的为 `UNSUPPORTED_ASSET_TYPE`。
 - 日期必须满足第 5.2 节的严格性。
 - 输入级校验失败不启动任何 graph，不生成比较 Markdown 或 manifest；返回
-  `INVALID_TICKER`、`DUPLICATE_TICKER`、`INVALID_DATE` 或 `FUTURE_DATE`。
+  `INVALID_TICKER`、`DUPLICATE_TICKER`、`UNSUPPORTED_ASSET_TYPE`、
+  `INVALID_DATE` 或 `FUTURE_DATE`。
 - 不沿用交互式 `get_ticker` 的“空输入默认 SPY”行为；A 的两个 ticker 均必填。
 
 #### 5.1 ticker 归一化与安全校验
@@ -237,9 +279,13 @@ implementation waits for approval of the written tests.
    `normalize_ticker_symbol`，它委托给 `normalize_symbol`。
 3. canonical ticker 必须再通过 `safe_ticker_component`：非空、`max_len=32`、
    仅允许上游 `_TICKER_PATH_RE` 的字符、拒绝纯点号。
-4. 任一步抛错 -> 请求级 `INVALID_TICKER`；不启动 graph，不生成工件。
-5. 两个 ticker 的“不同”在归一化并通过安全校验后比较。
-6. 报告和 manifest 只使用通过安全校验的 canonical ticker。
+4. canonical ticker 必须是股票：拒绝 crypto 后缀
+   `-USD`/`-USDT`/`-USDC`/`-BTC`/`-ETH`、Forex `=X`、Futures `=F`、
+   Index `^...`；失败为 `UNSUPPORTED_ASSET_TYPE`，不启动 graph，不生成工件。
+5. 任一步抛错 -> 请求级 `INVALID_TICKER` 或 `UNSUPPORTED_ASSET_TYPE`；
+   不启动 graph，不生成工件。
+6. 两个 ticker 的“不同”在归一化并通过安全校验后比较。
+7. 报告和 manifest 只使用通过安全校验的 canonical ticker。
 
 `normalize_symbol` 对空/非字符串可能原样返回；`safe_ticker_component` 会拒绝
 空值。A 不能因 `normalize_symbol` 未报错而跳过安全校验。
@@ -265,9 +311,11 @@ implementation waits for approval of the written tests.
 
 **输入级校验错误发生在任何 graph 运行之前，不生成任何比较工件；运行级失败发生在输入校验通过之后，仍必须生成包含 `FAILED` 行的 `comparison.md` 与 `comparison_manifest.json`。**
 
-- 输入级：`INVALID_TICKER`、`DUPLICATE_TICKER`、`INVALID_DATE`、`FUTURE_DATE`。
-- 运行级：`GRAPH_FAILED`、`REPORT_SAVE_FAILED`、
-  `MISSING_OR_INVALID_FINAL_RATING`、`INTERNAL_ERROR`。
+- 输入级：`INVALID_TICKER`、`DUPLICATE_TICKER`、`UNSUPPORTED_ASSET_TYPE`、
+  `INVALID_DATE`、`FUTURE_DATE`。
+- 运行级：`GRAPH_FAILED`、`REPORT_SAVE_FAILED`、`RESULT_IDENTITY_MISMATCH`、
+  `REPORT_ATTRIBUTION_FAILED`、`MISSING_OR_INVALID_FINAL_RATING`、
+  `INTERNAL_ERROR`。
 - 工件写出失败是单独的请求级失败，不得伪装成某个 ticker 的 `FAILED` 行，也不得
   声称比较成功。
 
@@ -285,7 +333,7 @@ implementation waits for approval of the written tests.
 | ticker | analysis_date | status | final_rating | summary | report_path | failure_reason |
 |---|---|---|---|---|---|---|
 | AAPL | 2026-11-20 | SUCCESS | Hold | 多空因素接近平衡，维持中性。 | reports/AAPL_20261120_120000/complete_report.md | null |
-| MSFT | 2026-11-20 | FAILED | null | null | null | GRAPH_FAILED: upstream analysis raised |
+| MSFT | 2026-11-20 | FAILED | null | null | null | GRAPH_FAILED: Upstream analysis failed. |
 
 对应 JSON（相对路径）：
 
@@ -313,7 +361,7 @@ implementation waits for approval of the written tests.
       "final_rating": null,
       "summary": null,
       "report_path": null,
-      "failure_reason": "GRAPH_FAILED: upstream analysis raised"
+      "failure_reason": "GRAPH_FAILED: Upstream analysis failed."
     }
   ],
   "comparison_report_path": "comparisons/cmp_01JEXAMPLE0000000000000000/comparison.md"
@@ -325,15 +373,15 @@ implementation waits for approval of the written tests.
 | Item | Value |
 |---|---|
 | Contract ID | A-IC-001 |
-| Version | draft-0.3 |
-| Contract status | FROZEN — approved by D; plan and tests-first intent approved by member A on 2026-11-23 |
+| Version | draft-0.4 |
+| Contract status | DRAFT-0.4 AMENDMENT — D is contract approver/acceptance owner; member A approved the plan and tests-first intent; independent code review pending (CHANGES REQUIRED fixes in progress) |
 | Contract approver | D |
 | Acceptance owner | D |
 | Approval date | 2026-11-23 |
-| Approval basis | member A 于 2026-11-23 确认验收人与契约批准人均为 D（团队同意），并确认下方六项批准记录。 |
-| Reviewed content | A-IC-001 draft-0.3, including the four draft-0.3 revisions: date strictness under `_validate_trade_date`; summary branches for team/standard REVIEW and five-tier ratings; results-root relative `report_path` using upstream `default_report_path()`; canonical ticker `safe_ticker_component` validation. Full clause text is in the A-IC-001 contract above. |
-| Formal freeze | Frozen by the approval record below (2026-11-23). |
-| Implementation gate | Tests-first authorized. No implementation before the written tests are approved. |
+| Approval basis | member A 于 2026-11-23 确认验收人与契约批准人均为 D（团队同意），并确认下方批准记录；draft-0.4 为 CHANGES REQUIRED 修复后的契约修订。 |
+| Reviewed content | A-IC-001 draft-0.4: fixed safe failure text with no upstream exception strings; new `RESULT_IDENTITY_MISMATCH`, `REPORT_ATTRIBUTION_FAILED`, `UNSUPPORTED_ASSET_TYPE`; stock-only input scope; full multi-line Executive Summary extraction; run_comparison example and results-root-relative path rules. Full clause text is in the A-IC-001 contract above. |
+| Formal freeze | Draft-0.3 was frozen 2026-11-23. Draft-0.4 fixes are implemented and awaiting independent code re-review; D confirmation of the amendment remains required before merge. |
+| Implementation gate | P1/P2 fixes implemented locally with tests; no merge before D confirms draft-0.4 and a non-author review completes. |
 
 ### Approval record (2026-11-23)
 
@@ -346,5 +394,10 @@ member A 于 2026-11-23 确认：
 - A-IC-001 draft-0.3 由 DRAFT 转为正式冻结；
 - 契约批准人：D；验收人：D。
 
-This record is the formal freeze basis. Tests-first is authorized; implementation
-remains gated on approval of the written tests.
+This record is the formal freeze basis for draft-0.3 and records the human
+approvals for the fix cycle. D is the contract approver and acceptance owner.
+Member A approved the execution plan and the tests-first test intent; the written
+A tests and the P1/P2 fixes were subsequently reviewed and accepted by member A
+during the batch reviews. The remaining gate is **independent non-author code
+review** of the draft-0.4 fixes; the current review verdict is **CHANGES
+REQUIRED**, and the fixes await re-review. No merge is authorized by this record.

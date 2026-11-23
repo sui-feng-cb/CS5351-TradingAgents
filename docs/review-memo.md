@@ -524,15 +524,16 @@ the required suite must pass after implementation. The pending candidate contrac
 values and NFR-C target remain subject to team confirmation. This review does not
 approve application implementation or merge.
 
-## FR-A / NFR-A 同日双标的比较 PR（draft）
+## FR-A / NFR-A 同日双标的比较 PR · 2026-11-23
 
 - **Repository:** `sui-feng-cb/CS5351-TradingAgents`
 - **PR:** #7 — https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/7
-- **Reviewer:** 待填（必须为非作者；不得自批）
-- **Base:** main
-- **Head:** 40bbe2cd8fd2799d629c1a4acf88dfa5c57bb62a
+- **Reviewer:** OpenCode（按用户请求进行非作者代码审查）
+- **Base:** main / `41e1b0b5f0717d349dab5a688634a32a388b7466`
+- **Reviewed head:** `ea49ffba50c43ea2def802bec21a70fac6f2c38a`
+- **Merge commit:** `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`（审查 head 与其内容一致）
 - **Date:** 2026-11-23
-- **Scope:** FR-A、NFR-A、INV-A；A-IC-001（2026-11-23 冻结）
+- **Scope:** FR-A、NFR-A、INV-A、SEC-01；A-IC-001、ADR-001
 - **Files:** `src/tradingagents/enhancements/comparison.py`、
   `test/offline/test_comparison.py`、`docs/architecture/interface-contracts.md`、
   `docs/architecture/invariants.md`、`docs/architecture/trace-matrix.md`、
@@ -541,19 +542,37 @@ approve application implementation or merge.
 ### 需求与架构对齐
 
 - FR-A：两个不同 ticker、同一 canonical 日期、顺序调用上游；
-  输出比较 Markdown + 强制 manifest；字段顺序符合 draft-0.3。
+  输出比较 Markdown + 强制 manifest；draft-0.3 字段顺序。
 - NFR-A：任一 ticker 失败时另一成功报告保留；失败行 rating/summary/report_path
   为 null；不跨 ticker 回填。
 - INV-A：已登记；A-FAIL/A-XTALK 覆盖。
+- SEC-01：失败原因不得泄露上游异常原文或凭证。
 - 未改 graph/agents/eligibility/CLI/provider/prompt；不触发 safety-critical
   路径的 ADR+独立安全评审要求，但仍需非作者最终评审。
 
+### 审查发现
+
+1. **P1 — 上游异常原文进入公开结果和工件。** `_failure_reason` 拼接
+   `str(exc)`，导致 synthetic credential URL/token/账户标记进入
+   `failure_reason`、Markdown 和 JSON。违反 A-IC-001 §3 与 SEC-01。要求固定
+   错误码和安全文案，并断言 PARTIAL 下另一报告保留、三处输出无敏感标记。
+2. **P1 — 结果身份和报告归属缺少校验。** `run_one` 直接采信 graph 返回状态；
+   AAPL 收到 MSFT 状态仍可 SUCCESS 并发布 Sell；MSFT 目录报告或 `notes.md`
+   也可被当成 AAPL 完整报告。要求在保存前核对 ticker/date，在发布前核对
+   `complete_report.md` 文件名和 ticker 目录归属，错误行三字段为 null。
+3. **P2 — 多行 Executive Summary 只保留首行。** 需要提取到下一节之前的完整
+   摘要段，再折叠、单行化、截断 500 字符，并补多行/标题后换行/缺省回退测试。
+4. **P2 — 接受 crypto 标的后使用股票管线。** `btcusd`/`BTC-USD` 被接受但
+   `propagate` 使用默认 stock。A 范围随后限定为仅股票，要求预检拒绝
+   Crypto/Forex/Futures/Index 并同步契约和测试。
+
 ### 代码与测试
 
-- 仅新增编排/汇总；无新增运行时依赖。
-- 离线 fake graph；30 个 comparison 测试在隔离本地运行通过。
-- 覆盖两成功、REVIEW、第一/第二/双失败、save 失败、MISSING rating、
-  输入错误、归一化、XTALK、manifest 一致性。
+- 仅新增编排/汇总；无新增运行时依赖；CLI 属后续协调集成。
+- 审查 head：30 个 comparison 测试通过；修复分支：38 个 comparison 测试通过。
+- 修复后覆盖异常脱敏、身份/归属校验、多行摘要、stock-only 拒绝、两成功、
+  REVIEW、第一/第二/双失败、save 失败、MISSING rating、输入错误、XTALK、
+  manifest 一致性。
 - 本地缺少 yfinance，完整 conftest/全回归未在本地完成；以 CI Python 3.13 为准。
 
 ### 运行元数据
@@ -567,7 +586,7 @@ approve application implementation or merge.
 - 未改 `src/tradingagents/graph/`、`src/tradingagents/agents/`、
   `eligibility.py`。
 - 输入校验先于任何 graph 运行；失败项不携带有效评级。
-- 无密钥、凭证 URL 或账户数据进入报告。
+- 修复后失败原因只含固定安全文案；无密钥、凭证 URL 或账户数据进入报告。
 
 ### 效率
 
@@ -577,23 +596,26 @@ approve application implementation or merge.
 
 ### 验证证据
 
-- `PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline`
-  → 30 passed。
-- `python -m py_compile src/tradingagents/enhancements/comparison.py test/offline/test_comparison.py`
-  → 通过。
-- `ruff check .`（临时 venv，ruff 0.17.6）→ All checks passed。
-- `python scripts/check_governance.py` → 通过。
-- `git diff --check` → 通过。
-- 未运行：完整本地 conftest/全回归（缺 yfinance）、CI Python 3.13 全量。
-- `comparison.py` 不在当前 CI mypy 覆盖范围；mypy 仅覆盖治理脚本。
-
-### 发现
-
-- 本地审查未发现新的阻塞性问题；最终结论由独立评审人填写。
+- 审查 head 隔离运行：
+  `PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -q --tb=line --disable-warnings`
+  → 1562 passed、29 failed、1 skipped、1 deselected、100 subtests passed；
+  29 个失败均为 C `test_manifest.py` 预期红测，A 的 30 项通过。
+- 修复分支：
+  `PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline`
+  → 38 passed。
+- 本地治理检查 `--base 41e1b0b`、全仓 Ruff、治理脚本 mypy、pip check、
+  `git diff --check` 均通过；PR/push CI 的治理、Ruff、干净安装和 safety review
+  通过，测试作业失败仅来自 C 红测。
+- 临时离线探针复现前 3 项问题；真实上游报告写入器的双成功对照通过。
 
 ### 决定
 
-**PENDING — reviewer to fill.** 评审人须给出 `APPROVE`、`CHANGES REQUIRED` 或 `REJECT`。
+**CHANGES REQUIRED。**
+
+修复状态：P1 异常脱敏、P1 身份/归属校验、P2 多行摘要、P2 stock-only 范围已在
+`feature/A-comparison-review-fixes` 实现，38 个 A 测试本地通过；契约/追踪矩阵/
+bug diary/AI 日志正在更新到 draft-0.4。当前等待独立非作者复审；在新 head 通过
+复审前不得合并。
 
 ## Future review records
 
