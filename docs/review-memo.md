@@ -283,6 +283,77 @@ CommonMark 解析现在保留真实换行的源位置，并屏蔽行内代码消
 
 **APPROVE**。上一轮发现已修复，新增加的评级来源与硬换行回归通过，FR-D/NFR-D/INV-D 范围内未发现其他阻塞问题。此结论限于上述 PR head 的代码复审。
 
+## FR-A / NFR-A 同日双标的比较 PR（draft）
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **PR:** 待开 draft；编号/URL 待填
+- **Reviewer:** 待填（必须为非作者；不得自批）
+- **Base:** 待填
+- **Head:** 待填
+- **Date:** 2026-11-23
+- **Scope:** FR-A、NFR-A、INV-A；A-IC-001（2026-11-23 冻结）
+- **Files:** `src/tradingagents/enhancements/comparison.py`、
+  `test/offline/test_comparison.py`、`docs/architecture/interface-contracts.md`、
+  `docs/architecture/invariants.md`、`docs/architecture/trace-matrix.md`、
+  `docs/req/requirements.yaml`、`docs/bug-diary.md`、`docs/ai-use-log.yaml`
+
+### 需求与架构对齐
+
+- FR-A：两个不同 ticker、同一 canonical 日期、顺序调用上游；
+  输出比较 Markdown + 强制 manifest；字段顺序符合 draft-0.3。
+- NFR-A：任一 ticker 失败时另一成功报告保留；失败行 rating/summary/report_path
+  为 null；不跨 ticker 回填。
+- INV-A：已登记；A-FAIL/A-XTALK 覆盖。
+- 未改 graph/agents/eligibility/CLI/provider/prompt；不触发 safety-critical
+  路径的 ADR+独立安全评审要求，但仍需非作者最终评审。
+
+### 代码与测试
+
+- 仅新增编排/汇总；无新增运行时依赖。
+- 离线 fake graph；30 个 comparison 测试在隔离本地运行通过。
+- 覆盖两成功、REVIEW、第一/第二/双失败、save 失败、MISSING rating、
+  输入错误、归一化、XTALK、manifest 一致性。
+- 本地缺少 yfinance，完整 conftest/全回归未在本地完成；以 CI Python 3.13 为准。
+
+### 运行元数据
+
+- `comparison_id = cmp_<uuid4 hex>`；`generated_at` 为 UTC RFC3339 `Z`。
+- `report_path` 相对 `config["results_dir"]`，使用上游 `default_report_path()`。
+- Markdown/manifest 由同一不可变结果派生。
+
+### 安全
+
+- 未改 `src/tradingagents/graph/`、`src/tradingagents/agents/`、
+  `eligibility.py`。
+- 输入校验先于任何 graph 运行；失败项不携带有效评级。
+- 无密钥、凭证 URL 或账户数据进入报告。
+
+### 效率
+
+- 顺序执行两次上游分析；无额外 LLM 调用。
+- 摘要提取为确定性文本处理；无新增 provider 调用。
+- `comparison_manifest.json` 为小型本地产物。
+
+### 验证证据
+
+- `PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline`
+  → 30 passed。
+- `python -m py_compile src/tradingagents/enhancements/comparison.py test/offline/test_comparison.py`
+  → 通过。
+- `ruff check .`（临时 venv，ruff 0.17.6）→ All checks passed。
+- `python scripts/check_governance.py` → 通过。
+- `git diff --check` → 通过。
+- 未运行：完整本地 conftest/全回归（缺 yfinance）、CI Python 3.13 全量。
+- `comparison.py` 不在当前 CI mypy 覆盖范围；mypy 仅覆盖治理脚本。
+
+### 发现
+
+- 本地审查未发现新的阻塞性问题；最终结论由独立评审人填写。
+
+### 决定
+
+**PENDING — reviewer to fill.** 评审人须给出 `APPROVE`、`CHANGES REQUIRED` 或 `REJECT`。
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:
