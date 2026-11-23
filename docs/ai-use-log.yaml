@@ -1,5 +1,31 @@
 schema_version: 1
 entries:
+  - id: A-COMPARE-001
+    scope: same-day-two-ticker-comparison-fr-a-nfr-a
+    agent: OpenCode
+    requirements: [FR-A, NFR-A, INV-A, GOV-01]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 7
+    base_head: ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f
+    user_direction: "Member A requested FR-A/NFR-A contract freeze, tests-first implementation, staged review, and no commit/push."
+    human_approval: "Member A approved the plan, tests-first intent, INV-A registration, API-first scope and A-IC-001 freeze on 2026-11-23; contract approver and acceptance owner are D. Independent PR review is pending."
+    publication_direction: "Committed and pushed to feature/A-dual-ticker-comparison; draft PR #7 opened against main. No main-branch push."
+    files:
+      - src/tradingagents/enhancements/comparison.py
+      - test/offline/test_comparison.py
+      - docs/architecture/interface-contracts.md
+      - docs/architecture/invariants.md
+      - docs/architecture/trace-matrix.md
+      - docs/bug-diary.md
+      - docs/req/requirements.yaml
+      - docs/review-memo.md
+      - transcripts/12345678-A.md
+      - docs/ai-use-log.yaml
+    transcript: transcripts/12345678-A.md
+    transcript_status: "Native JSON snapshot plus dated human approval/test-addendum annotations. Student ID/name replaced with 12345678/A at participant request; local username/home paths redacted as [redacted-user]. D5 final format is pending course confirmation (v4 section 13 item 6)."
+    human_annotations: transcripts/12345678-A.md
+    validation: "Local isolated comparison suite: 30 passed via PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline; py_compile passed; ruff 0.17.6 full-repo check passed; scripts/check_governance.py passed; git diff --check passed. Full conftest collection and Python 3.13 CI are pending; local venv lacks yfinance. comparison.py is outside CI mypy coverage."
+    feature_status: "Implemented locally through batches 6a-6d; 30 comparison tests pass in isolated local run; draft PR #7 opened; independent review pending."
   - id: GOV-SAME-PR-OPTIONAL-001
     scope: make-same-pr-test-review-advisory-and-preserve-safety-review-gate
     agent: OpenCode
