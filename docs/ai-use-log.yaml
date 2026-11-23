@@ -1,5 +1,30 @@
 schema_version: 1
 entries:
+  - id: A-COMPARE-FIX-002
+    scope: pr8-re-review-symlink-and-non-usd-crypto-fixes
+    agent: OpenCode
+    requirements: [FR-A, NFR-A, INV-A, SEC-01, GOV-01]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 8
+    base_head: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+    reviewed_head: 094e2a700f56144551261bfcabc5e15bff3efcac
+    review_verdict: CHANGES REQUIRED
+    user_direction: "Member A approved fixing the PR #8 re-review P1 symlink attribution and P2 non-USD crypto findings, plus the draft-0.4 documentation update."
+    human_approval: "Member A approved the two fixes and the documentation update; D remains contract approver/acceptance owner. Independent non-author re-review of the new head is pending."
+    publication_direction: "Commit and push to feature/A-comparison-review-fixes; no merge. No main-branch push."
+    files:
+      - src/tradingagents/enhancements/comparison.py
+      - test/offline/test_comparison.py
+      - docs/architecture/interface-contracts.md
+      - docs/architecture/trace-matrix.md
+      - docs/bug-diary.md
+      - docs/review-memo.md
+      - docs/ai-use-log.yaml
+    transcript: transcripts/12345678-A.md
+    transcript_status: "Active fix session; full TUI /export remains pending. Prior A transcript is retained at transcripts/12345678-A.md."
+    human_annotations: transcripts/12345678-A.md
+    validation: "40 comparison tests pass via PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline; py_compile, Ruff, governance and git diff --check pass. Full conftest/CI remains pending; the baseline CI has 29 expected C manifest/CLI failures. comparison.py is outside CI mypy coverage."
+    feature_status: "Resolved-path/symlink attribution validation and non-USD crypto rejection implemented on feature/A-comparison-review-fixes; 40 A tests pass; draft-0.4 docs updated; draft PR #8 open; independent re-review pending; no merge."
   - id: A-COMPARE-FIX-001
     scope: fr-a-nfr-a-pr7-changes-required-fixes
     agent: OpenCode

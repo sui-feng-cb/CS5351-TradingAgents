@@ -39,6 +39,17 @@ _SAFE_FAILURE_MESSAGES = {
     "INTERNAL_ERROR": "Comparison processing failed.",
 }
 _NON_STOCK_SUFFIXES = ("-USD", "-USDT", "-USDC", "-BTC", "-ETH")
+_KNOWN_CRYPTO_BASES = frozenset(
+    {"BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LTC", "BCH", "DOT", "AVAX", "LINK"}
+)
+_CRYPTO_QUOTES = frozenset(
+    {
+        "USD", "USDT", "USDC",
+        "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY", "CNH", "HKD",
+        "SGD", "NZD", "KRW", "INR", "BRL", "RUB", "MXN", "ZAR", "TRY",
+        "SEK", "NOK", "DKK", "PLN",
+    }
+)
 
 
 class _GraphLike(Protocol):
@@ -97,6 +108,10 @@ class ComparisonInputError(ValueError):
         super().__init__(f"{code}: {message}")
 
 
+class _ReportAttributionError(ValueError):
+    """The resolved report path does not belong to the requested ticker."""
+
+
 def _canonical_ticker(raw: object, field: str) -> str:
     if not isinstance(raw, str) or not raw.strip():
         raise ComparisonInputError(
@@ -137,10 +152,15 @@ def _validate_analysis_date(value: object) -> str:
 
 
 def _is_stock_symbol(symbol: str) -> bool:
+    if symbol.endswith(("=X", "=F")) or symbol.startswith("^"):
+        return False
+    if symbol.endswith(_NON_STOCK_SUFFIXES):
+        return False
+    base, separator, quote = symbol.partition("-")
     return not (
-        symbol.endswith(_NON_STOCK_SUFFIXES)
-        or symbol.endswith(("=X", "=F"))
-        or symbol.startswith("^")
+        separator
+        and base in _KNOWN_CRYPTO_BASES
+        and quote in _CRYPTO_QUOTES
     )
 
 
@@ -246,17 +266,32 @@ def _summary_for(final_state: dict, rating: str) -> str:
     return _SUMMARY_FALLBACK
 
 
-def _relative_report_path(saved: object, results_root: object) -> str:
+def _relative_report_path(saved: object, results_root: object, ticker: str) -> str:
     saved_path = Path(saved)
     root = Path(str(results_root))
-    resolved_saved = saved_path.resolve()
-    resolved_root = root.resolve()
+    if saved_path.is_symlink() or saved_path.parent.is_symlink():
+        raise _ReportAttributionError(f"report path uses a symlink: {saved_path}")
+    resolved_saved = saved_path.resolve(strict=True)
+    resolved_root = root.resolve(strict=True)
     try:
         relative = resolved_saved.relative_to(resolved_root)
     except ValueError as exc:
         raise ValueError(f"report path escapes results_dir: {saved_path}") from exc
     if not resolved_saved.is_file():
         raise ValueError(f"complete_report.md not found: {saved_path}")
+    expected_dir = re.compile(
+        rf"^{re.escape(safe_ticker_component(ticker))}_\d{{8}}_\d{{6}}$"
+    )
+    parts = relative.parts
+    if (
+        len(parts) != 3
+        or parts[0] != "reports"
+        or parts[2] != "complete_report.md"
+        or not expected_dir.fullmatch(parts[1])
+    ):
+        raise _ReportAttributionError(
+            f"report path does not belong to {ticker}: {relative.as_posix()}"
+        )
     return relative.as_posix()
 
 
@@ -297,18 +332,11 @@ def run_one(
         return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED")
 
     try:
-        saved_path = Path(saved)
-        expected_prefix = f"{safe_ticker_component(ticker)}_"
-        if (
-            saved_path.name != "complete_report.md"
-            or not saved_path.parent.name.startswith(expected_prefix)
-        ):
-            return _failed(ticker, analysis_date, "REPORT_ATTRIBUTION_FAILED")
-    except Exception:
-        return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED")
-
-    try:
-        report_path = _relative_report_path(saved, graph.config["results_dir"])
+        report_path = _relative_report_path(
+            saved, graph.config["results_dir"], ticker
+        )
+    except _ReportAttributionError:
+        return _failed(ticker, analysis_date, "REPORT_ATTRIBUTION_FAILED")
     except Exception:
         return _failed(ticker, analysis_date, "REPORT_SAVE_FAILED")
 

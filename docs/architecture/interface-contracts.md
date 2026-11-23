@@ -194,6 +194,11 @@ for row in result.tickers:
   绝对路径，也不保证可跨机器移植绝对路径。
 - `row.report_path` 只在 `SUCCESS` 时非空，且指向该 ticker 的
   `complete_report.md`。
+- **resolved path 校验**：实现必须对 `resolve(strict=True)` 后的最终路径重新
+  校验，不能只检查原始路径字符串。最终路径不得经过目录或文件符号链接，且相对
+  结果根的结构必须精确为
+  `reports/{safe_ticker_component(ticker)}_{YYYYMMDD_HHMMSS}/complete_report.md`。
+  不匹配为 `REPORT_ATTRIBUTION_FAILED`。
 
 ### 3. status / rating、空值与 summary
 
@@ -204,7 +209,7 @@ for row in result.tickers:
 | graph 抛错 | `FAILED` | `null` | 运行异常；不保留部分评级。 |
 | 报告保存失败/`complete_report.md` 缺失 | `FAILED` | `null` | 结果不完整，整行按失败处理。 |
 | 结果状态不属于请求 ticker/日期 | `FAILED` | `null` | `RESULT_IDENTITY_MISMATCH`；不调用 `save_reports`。 |
-| 返回报告不属于请求 ticker | `FAILED` | `null` | `REPORT_ATTRIBUTION_FAILED`。 |
+| 返回报告不属于请求 ticker（含 resolved 后指向其他 ticker 或 `notes.md`） | `FAILED` | `null` | `REPORT_ATTRIBUTION_FAILED`。 |
 | 运行完成但没有可用权威评级 | `FAILED` | `null` | 原因码 `MISSING_OR_INVALID_FINAL_RATING`；不得从正文猜评级。 |
 
 - `status=FAILED` 时 `final_rating`、`summary`、`report_path` 必须为 `null`；
@@ -279,9 +284,14 @@ for row in result.tickers:
    `normalize_ticker_symbol`，它委托给 `normalize_symbol`。
 3. canonical ticker 必须再通过 `safe_ticker_component`：非空、`max_len=32`、
    仅允许上游 `_TICKER_PATH_RE` 的字符、拒绝纯点号。
-4. canonical ticker 必须是股票：拒绝 crypto 后缀
-   `-USD`/`-USDT`/`-USDC`/`-BTC`/`-ETH`、Forex `=X`、Futures `=F`、
-   Index `^...`；失败为 `UNSUPPORTED_ASSET_TYPE`，不启动 graph，不生成工件。
+4. canonical ticker 必须是股票；拒绝：
+   - crypto 后缀 `-USD`/`-USDT`/`-USDC`/`-BTC`/`-ETH`；
+   - `BASE-QUOTE` 形式，其中 BASE 属于已知 crypto base
+     `BTC`/`ETH`/`SOL`/`XRP`/`ADA`/`DOGE`/`LTC`/`BCH`/`DOT`/`AVAX`/`LINK`，
+     QUOTE 属于常见报价 `USD`/`USDT`/`USDC`/`EUR`/`GBP`/`JPY`/`AUD`/`CAD`/
+     `CHF`/`CNY`/`HKD`/`SGD`/`NZD` 等；
+   - Forex `=X`、Futures `=F`、Index `^...`。
+   失败为 `UNSUPPORTED_ASSET_TYPE`，不启动 graph，不生成工件。
 5. 任一步抛错 -> 请求级 `INVALID_TICKER` 或 `UNSUPPORTED_ASSET_TYPE`；
    不启动 graph，不生成工件。
 6. 两个 ticker 的“不同”在归一化并通过安全校验后比较。
@@ -379,7 +389,7 @@ for row in result.tickers:
 | Acceptance owner | D |
 | Approval date | 2026-11-23 |
 | Approval basis | member A 于 2026-11-23 确认验收人与契约批准人均为 D（团队同意），并确认下方批准记录；draft-0.4 为 CHANGES REQUIRED 修复后的契约修订。 |
-| Reviewed content | A-IC-001 draft-0.4: fixed safe failure text with no upstream exception strings; new `RESULT_IDENTITY_MISMATCH`, `REPORT_ATTRIBUTION_FAILED`, `UNSUPPORTED_ASSET_TYPE`; stock-only input scope; full multi-line Executive Summary extraction; run_comparison example and results-root-relative path rules. Full clause text is in the A-IC-001 contract above. |
+| Reviewed content | A-IC-001 draft-0.4: fixed safe failure text with no upstream exception strings; new `RESULT_IDENTITY_MISMATCH`, `REPORT_ATTRIBUTION_FAILED`, `UNSUPPORTED_ASSET_TYPE`; stock-only input scope including non-USD crypto bases; full multi-line Executive Summary extraction; run_comparison example; results-root-relative path rules; resolved-path/symlink attribution validation. Full clause text is in the A-IC-001 contract above. |
 | Formal freeze | Draft-0.3 was frozen 2026-11-23. Draft-0.4 fixes are implemented and awaiting independent code re-review; D confirmation of the amendment remains required before merge. |
 | Implementation gate | P1/P2 fixes implemented locally with tests; no merge before D confirms draft-0.4 and a non-author review completes. |
 

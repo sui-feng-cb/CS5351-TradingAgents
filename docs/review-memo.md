@@ -617,6 +617,58 @@ approve application implementation or merge.
 bug diary/AI 日志正在更新到 draft-0.4。当前等待独立非作者复审；在新 head 通过
 复审前不得合并。
 
+## PR #8 · A 比较模块修复复审 · 2026-11-23
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **PR:** #8 — https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/8
+- **Reviewer:** OpenCode（按用户请求进行非作者复审）
+- **Base:** `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`
+- **Reviewed head:** `094e2a700f56144551261bfcabc5e15bff3efcac`
+- **Date:** 2026-11-23
+- **Scope:** FR-A、NFR-A、INV-A、SEC-01；ADR-001、ADR-003、A-IC-001 draft-0.4
+
+### 上轮整改核对
+
+- 异常原文泄露已修复：稳定错误码 + 固定安全文案，三个公开输出无敏感标记。
+- 状态身份校验已生效：错 ticker/错日期在保存前返回
+  `RESULT_IDENTITY_MISMATCH`，三个结果字段为 `null`。
+- 多行 Executive Summary 已修复：完整提取到下一节，再折叠/截断。
+- stock-only 常见输入已拒绝，但非美元 crypto 仍有遗漏。
+
+### 本轮发现
+
+1. **P1 — 报告归属检查先于路径解析，仍可发布另一 ticker 的报告。**
+   - `run_one` 只在原始 `saved_path` 上检查文件名和父目录前缀，
+     `_relative_report_path` 随后才 `resolve()`，最终发布路径未重新校验。
+   - 目录符号链接 `reports/AAPL_<stamp>` → `reports/MSFT_<stamp>` 时，AAPL
+     仍为 `SUCCESS`。
+   - 文件符号链接 `AAPL/complete_report.md` → `MSFT/notes.md` 时，公开路径
+     变成 MSFT 的 `notes.md`。
+   - 要求对 resolved 后路径统一检查结果根、精确
+     `reports/{ticker}_{stamp}/complete_report.md` 结构和归属。
+2. **P2 — stock-only 预检漏掉非美元计价 crypto。**
+   - `BTC-EUR`、`ETH-GBP`、`BTC-JPY` 通过预检并以 `asset_type="stock"`
+     写入成功工件。
+   - 要求补齐 crypto base + quote 识别，或与 D 明确可确定验证的股票输入范围；
+     测试需覆盖两个输入位置、零 graph/save 调用和零工件。
+
+### 验证
+
+- 审查 head：A 专项 38 passed；全量 1570 passed、29 failed、1 skipped、
+  1 deselected、100 subtests passed；29 项均为 C `test_manifest.py` 预期红测。
+- 独立探针：5 failed、6 passed；失败对应目录/文件符号链接和非美元 crypto。
+- 修复后：A 专项 40 passed；`py_compile`、Ruff、治理、`git diff --check`
+  通过；完整 CI 待新 head 重跑。
+- 29 项 C 基线红测不归因于 A，C 测试未被修改。
+
+### 决定
+
+**CHANGES REQUIRED。**
+
+符号链接归属和 non-USD crypto 两项修复已在
+`feature/A-comparison-review-fixes` 实现，A 的 40 项测试本地通过，契约/追踪/
+bug diary/AI 日志已更新。当前等待独立非作者复审；新 head 通过复审前不得合并。
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:

@@ -235,6 +235,43 @@ class AttributionGraph(FakeGraph):
         return path
 
 
+class SymlinkAttributionGraph(FakeGraph):
+    """Returns a report path whose resolved target belongs to another ticker."""
+
+    def __init__(self, results_root: Path, *, kind: str) -> None:
+        super().__init__(results_root)
+        self.kind = kind
+
+    def save_reports(
+        self,
+        final_state: dict,
+        ticker: str,
+        save_path=None,
+        html: bool = True,
+    ) -> Path:
+        if ticker != "AAPL":
+            return super().save_reports(final_state, ticker, save_path, html)
+        self.save_calls.append((final_state, ticker, save_path, html))
+        msft_dir = self.results_root / "reports" / f"MSFT_{STAMP}"
+        msft_dir.mkdir(parents=True, exist_ok=True)
+        aapl_dir = self.results_root / "reports" / f"AAPL_{STAMP}"
+        if self.kind == "directory":
+            (msft_dir / "complete_report.md").write_text(
+                "# Trading Analysis Report: MSFT\n\nmarker:MSFT:complete\n",
+                encoding="utf-8",
+            )
+            aapl_dir.symlink_to(msft_dir, target_is_directory=True)
+            return aapl_dir / "complete_report.md"
+        (msft_dir / "notes.md").write_text(
+            "# Trading Analysis Report: MSFT\n\nmarker:MSFT:notes\n",
+            encoding="utf-8",
+        )
+        aapl_dir.mkdir(parents=True, exist_ok=True)
+        link = aapl_dir / "complete_report.md"
+        link.symlink_to(msft_dir / "notes.md")
+        return link
+
+
 def _assert_no_sensitive(texts: list[str]) -> None:
     for text in texts:
         for term in SENSITIVE_TERMS:
@@ -927,17 +964,47 @@ def test_a_multiline_executive_summary_is_fully_extracted_and_collapsed(tmp_path
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("kind", ["directory", "file"])
+def test_a_symlink_report_attribution_is_rejected(tmp_path, kind):
+    """FR-A, NFR-A, INV-A: resolved report paths must belong to the ticker."""
+    results_root = tmp_path / "results"
+    graph = SymlinkAttributionGraph(results_root, kind=kind)
+
+    result = run_comparison(graph, "AAPL", "MSFT", DATE)
+
+    failed, success = result.tickers
+    assert failed.status == "FAILED"
+    assert failed.failure_reason is not None
+    assert failed.failure_reason.startswith("REPORT_ATTRIBUTION_FAILED")
+    assert failed.final_rating is None
+    assert failed.summary is None
+    assert failed.report_path is None
+    assert success.status == "SUCCESS"
+    assert success.report_path == _report_path("MSFT")
+    assert success.report_path is not None
+    assert (results_root / success.report_path).is_file()
+    assert result.overall_status == "PARTIAL"
+
+
+@pytest.mark.unit
 def test_a_crypto_ticker_is_rejected_as_unsupported_asset_type(tmp_path):
     """FR-A, NFR-A, INV-A: A accepts stocks only; crypto is rejected up front."""
     results_root = tmp_path / "results"
-    for crypto_ticker in ("btcusd", "BTC-USD"):
-        with pytest.raises(ComparisonInputError) as excinfo:
-            _validate_inputs(crypto_ticker, "MSFT", DATE)
-        assert excinfo.value.code == "UNSUPPORTED_ASSET_TYPE"
+    crypto_tickers = ("btcusd", "BTC-USD", "BTC-EUR", "ETH-GBP", "BTC-JPY")
+    for crypto_ticker in crypto_tickers:
+        for ticker_a, ticker_b in (
+            (crypto_ticker, "MSFT"),
+            ("MSFT", crypto_ticker),
+        ):
+            with pytest.raises(ComparisonInputError) as excinfo:
+                _validate_inputs(ticker_a, ticker_b, DATE)
+            assert excinfo.value.code == "UNSUPPORTED_ASSET_TYPE"
 
-        graph = FakeGraph(results_root)
-        with pytest.raises(ComparisonInputError) as run_excinfo:
-            run_comparison(graph, crypto_ticker, "MSFT", DATE)
-        assert run_excinfo.value.code == "UNSUPPORTED_ASSET_TYPE"
-        _assert_no_graph_calls(graph)
-        _assert_no_artifacts(results_root)
+            graph = FakeGraph(results_root)
+            with pytest.raises(ComparisonInputError) as run_excinfo:
+                run_comparison(graph, ticker_a, ticker_b, DATE)
+            assert run_excinfo.value.code == "UNSUPPORTED_ASSET_TYPE"
+            _assert_no_graph_calls(graph)
+            _assert_no_artifacts(results_root)
+
+    assert _validate_inputs("BRK-B", "AAPL", DATE) == ("BRK-B", "AAPL", DATE)
