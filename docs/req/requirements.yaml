@@ -1,0 +1,207 @@
+# CS5351 小组项目 — B 模块（FR-B / NFR-B）需求注册表
+# Version: 1.0（阶段 0 冻结）
+# Purpose: FR-B / NFR-B / INV-B 的统一需求注册表兼机器可读 PRD（对应 D1）
+# Format: YAML — machine-readable, version-controllable
+# Schema: docs/req/req-schema.json（CI 校验）
+# Created: 2026-11-22
+# Notes:
+#   - 每条含 id / type / statement / fit_criterion / moscow / source / owner / acceptor
+#   - source 引用 v4（CS5351小组项目要求v4.md）与 v3（CS5351小组项目A-D模块的最低任务与验收标准v3.md）章节
+#   - 类型覆盖 functional / invariant / quality；不变量零容忍（invariant）
+#   - 契约细节（evidence ID、输入/输出 schema、validator 接口）见 _refs/plan-B-approved.md §b
+
+requirements:
+
+  # ============================================================
+  # FUNCTIONAL — FR-B
+  # ============================================================
+  - id: FR-B-1
+    type: functional
+    statement: "系统接受 2–3 个有效 ticker 与一个回看窗口（≤7 天）作为输入，并据此确定新闻记录的日期窗口。"
+    fit_criterion: "输入 ticker 数为 2 或 3，回看天数 1 ≤ d ≤ 7；超出范围（<2、>3 个 ticker，或窗口 >7 天）被拒绝或截断并报错。测试断言 build_window 对 2、3 个 ticker 成功，对 1/4 个 ticker 与 8 天窗口失败。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 最低输入与范围"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/input.py — build_window(tickers, as_of, lookback)"
+    cross_refs:
+      trace_matrix: row 1
+
+  - id: FR-B-2
+    type: functional
+    statement: "对每个 ticker 复用上游新闻数据能力取最多 5 条记录；每条分配本次运行唯一 evidence ID，并保留 ticker、日期、来源、模型可读标题/内容片段。"
+    fit_criterion: "每个 ticker 记录数 0 ≤ n ≤ 5；每条 evidence_id 形如 ev-{run_id}-{ticker}-{seq} 且本次运行内唯一；字段 ticker/date/source/title/snippet 齐全。测试断言每 ticker ≤5 条、ID 本次运行唯一、字段齐全。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 最低输入与范围"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/news_source.py — fetch_records(); src/event_merge/evidence.py — EvidenceRegistry"
+    cross_refs:
+      trace_matrix: row 2
+
+  - id: FR-B-3
+    type: functional
+    statement: "将本次全部限定记录作为一组交给模型进行事件归并，最多一次 LLM 调用；不得逐条新闻分别调用模型。"
+    fit_criterion: "单次运行 LLM 调用次数 == 1；传给模型的输入包含本次全量 records。测试用 mock 断言 merge_once 恰好调用一次且传入的是全量记录。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 最低输入与范围"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/merger.py — merge_once()"
+    cross_refs:
+      invariant: INV-B-1
+      trace_matrix: row 3
+
+  - id: FR-B-4
+    type: functional
+    statement: "每个归并事件输出简短摘要、涉及的 ticker，以及支持该事件的 evidence ID、来源与日期。"
+    fit_criterion: "MergedEvent 含 summary、tickers、evidence（每项含 evidence_id/source/date）；模型输出符合结构化 schema。测试断言输出符合 schema。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 输出与失败行为"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/schemas.py — MergedEvent"
+    cross_refs:
+      trace_matrix: row 4
+
+  - id: FR-B-5
+    type: functional
+    statement: "一个事件至少有两个 ticker 的记录支持；证据不足的记录保留为未归并项，不得强行配组。"
+    fit_criterion: "validator 过滤后每个事件去重 ticker 数 ≥2；单一 ticker 事件被降级为未归并；无法确认同事件的记录进入 unmerged。测试断言单一 ticker 事件被剔除/降级。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 输出与失败行为"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/merger.py + validator.py（事后过滤）"
+    cross_refs:
+      invariant: [INV-B-2, INV-B-4]
+      trace_matrix: row 5
+
+  - id: FR-B-6
+    type: functional
+    statement: "无可用新闻时标记「数据不可用/无记录」；有新闻但未发现跨 ticker 共同事件时才报告「没有发现共同事件」。"
+    fit_criterion: "records 为空 → status=data_unavailable；records 非空且模型无跨 ticker 事件 → status=no_common_event；否则 status=merged。测试覆盖无记录状态与有记录无共同事件两种负向。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 输出与失败行为"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/merger.py（status 状态机）"
+    cross_refs:
+      trace_matrix: row 6
+
+  - id: FR-B-7
+    type: functional
+    statement: "确定性 validator 检查 evidence ID 是否属于本次输入、ticker/date 是否与该记录相符；校验失败的证据不得作为已验证事实输出。"
+    fit_criterion: "validate(registry, model_events)：evidence_id ∈ registry.issued_ids 且 ticker/date/source 与 record 一致才保留；否则移除并记入 dropped_invalid。测试覆盖伪造 ID、错配 ticker、错配 date 三类负向。"
+    moscow: Must
+    source: "v4 §4 FR-B; v3 §3 B 输出与失败行为"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/validator.py — validate()"
+    cross_refs:
+      invariant: [INV-B-3, INV-B-5]
+      trace_matrix: row 7
+
+  # ============================================================
+  # NON-FUNCTIONAL — NFR-B
+  # ============================================================
+  - id: NFR-B-1
+    type: quality
+    statement: "所有输出 evidence ID 的解析率为 100%。"
+    fit_criterion: "最终输出 events/unmerged 中的每个 evidence_id 都能在 registry 中解析回对应 NewsRecord；无法解析的 ID 数为 0。测试用全部合法输出断言解析率 100%。"
+    moscow: Must
+    source: "v4 §5 NFR-B; v3 §3 B 完成标准"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/validator.py + EvidenceRegistry"
+    cross_refs:
+      invariant: INV-B-3
+      trace_matrix: row 8
+
+  - id: NFR-B-2
+    type: invariant
+    statement: "伪造或跨运行 evidence ID 数为 0。"
+    fit_criterion: "注入不属于本次运行的 evidence_id（伪造/跨运行）时，validator 拒绝且伪造/跨运行计数 == 0；负向测试断言 0。"
+    moscow: Must
+    source: "v4 §5 NFR-B; v3 §3 B 完成标准"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/validator.py（registry.issued_ids 权威判定）"
+    cross_refs:
+      invariant: [INV-B-3, INV-B-5]
+      trace_matrix: row 9
+
+  - id: NFR-B-3
+    type: quality
+    statement: "不同事件不得因共享泛化词而强行归并；固定语义评估集 pairwise precision ≥0.80、recall ≥0.70。"
+    fit_criterion: "固定语义评估集 ≥20 对（≥10 同事件/≥10 不同事件）上，pairwise precision = TP/(TP+FP) ≥0.80 且 recall = TP/(TP+FN) ≥0.70；记录 model/provider、样例版本、precision/recall；CI 未达阈值即阻断。"
+    moscow: Must
+    source: "v4 §12 语义评估门禁; v3 §3 B 完成标准"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "prompt + test/offline/test_semantic_eval.py（固定评估集）"
+    cross_refs:
+      trace_matrix: row 10
+
+  # ============================================================
+  # INVARIANTS — INV-B（不可妥协规则，零容忍）
+  # ============================================================
+  - id: INV-B-1
+    type: invariant
+    statement: "每次事件归并最多一次 LLM 调用。"
+    fit_criterion: "单次运行 LLM 调用计数 == 1；违反即失败测试注入第二次调用并断言被禁止。"
+    moscow: Must
+    source: "AGENTS.md §7 权威边界; v3 §3 B 最低输入与范围"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/merger.py — merge_once()"
+    cross_refs:
+      trace_matrix: row 3
+
+  - id: INV-B-2
+    type: invariant
+    statement: "一个事件至少关联两个 ticker 的记录。"
+    fit_criterion: "validator 过滤后每个事件去重 ticker 数 ≥2；否则整事件降级为未归并。违反即失败测试注入单一 ticker 事件并断言被降级。"
+    moscow: Must
+    source: "AGENTS.md §7 权威边界; v4 §4 FR-B"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/validator.py（二次检查）"
+    cross_refs:
+      trace_matrix: row 5
+
+  - id: INV-B-3
+    type: invariant
+    statement: "确定性 validator 是证据合法性的唯一权威；校验失败的证据不得输出为已验证事实。"
+    fit_criterion: "任何 evidence_id 不在 registry.issued_ids 或 ticker/date/source 不匹配者一律从事件移除并记入 dropped_invalid；违反即失败测试注入伪造 ID/错配字段并断言被剔除。"
+    moscow: Must
+    source: "AGENTS.md §7 权威边界; v4 §4 FR-B"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "src/event_merge/validator.py — validate()"
+    cross_refs:
+      trace_matrix: row 7
+
+  - id: INV-B-4
+    type: invariant
+    statement: "证据不足的记录保留为未归并，不强行配对。"
+    fit_criterion: "无法满足「同事件且有来源支持」的记录进入 unmerged，不得因共享泛化词强行配组；违反即失败测试注入仅共享泛化词的两条记录并断言不归并。"
+    moscow: Must
+    source: "AGENTS.md §7 权威边界; v3 §3 B 输出与失败行为"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "merger.py + validator.py（未归并路径）"
+    cross_refs:
+      trace_matrix: row 5
+
+  - id: INV-B-5
+    type: invariant
+    statement: "模型输出不能覆盖确定性代码的判定。"
+    fit_criterion: "模型输出仅作为建议，最终输出以 validator 过滤结果为准；违反即失败测试注入模型声称合法但实际非法的证据并断言被确定性边界纠正。"
+    moscow: Must
+    source: "AGENTS.md §7 权威边界; v4 §1 项目目标"
+    owner: 成员 B
+    acceptor: 非 B 成员（peer review）
+    enforcing_component: "merger.py + validator.py（建议→权威分层）"
+    cross_refs:
+      trace_matrix: row 7

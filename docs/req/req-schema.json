@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cs5351.cityu.edu.hk/tradingagents-b/req-schema.json",
+  "title": "TradingAgents B-Module Requirements Registry Schema",
+  "description": "Validates docs/req/requirements.yaml structure for FR-B / NFR-B / INV-B entries. Source: CS5351 v4 D1 + v3 §3 B.",
+
+  "type": "object",
+  "required": ["requirements"],
+  "additionalProperties": false,
+  "properties": {
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "statement",
+          "fit_criterion",
+          "moscow",
+          "source",
+          "owner",
+          "acceptor"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(FR-B|NFR-B|INV-B)-[0-9]+$",
+            "description": "Requirement identifier. Must be FR-B-*, NFR-B-* or INV-B-* followed by digits."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "functional",
+              "invariant",
+              "quality",
+              "performance",
+              "cost",
+              "governance",
+              "security",
+              "architectural_constraint",
+              "availability",
+              "robustness",
+              "input_constraint"
+            ],
+            "description": "Requirement type from the course taxonomy. Invariants are non-negotiable (zero tolerance)."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 10,
+            "description": "What the system must do or must not do."
+          },
+          "fit_criterion": {
+            "type": "string",
+            "minLength": 5,
+            "description": "Measurable, machine-checkable acceptance criterion. Must not be vague."
+          },
+          "moscow": {
+            "type": "string",
+            "enum": ["Must", "Should", "Could", "Won't"],
+            "description": "MoSCoW priority."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Source reference (v4 / v3 section, or AGENTS.md)."
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Responsible team member."
+          },
+          "acceptor": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who accepts / verifies this requirement."
+          },
+          "enforcing_component": {
+            "type": "string",
+            "description": "Where in the architecture this requirement is enforced."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["proposed", "frozen", "implemented", "verified"],
+            "description": "Lifecycle status of the requirement."
+          },
+          "cross_refs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "invariant": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "array", "items": { "type": "string" } }
+                ],
+                "description": "Invariant register ID(s) derived from this requirement."
+              },
+              "trace_matrix": {
+                "type": "string",
+                "description": "Trace matrix row reference."
+              },
+              "adr": {
+                "type": "string",
+                "description": "ADR driven by this requirement."
+              }
+            }
+          },
+          "note": {
+            "type": "string",
+            "description": "Additional context, trade-offs, or implementation notes."
+          }
+        }
+      }
+    }
+  }
+}

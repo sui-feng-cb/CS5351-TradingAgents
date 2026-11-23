@@ -1,0 +1,55 @@
+# AI-Use Disclosure Log
+# B 模块（FR-B / NFR-B）coding agent 使用披露
+# 范本：_refs/docs_example/docs/ai-use-log.yaml（E1.2c，每个 PR 必须）
+# 格式：YAML — 机器可读、可版本控制
+
+disclosures:
+  - date: "2026-11-22"
+    pr_id: "N/A（阶段 3，提交前）"
+    task: "创建 test/fixtures/mock_model_outputs.json（合法分组/单一 ticker/无事件/伪造 ID/跨运行 ID/错配 ticker）"
+    agent: "OpenCode coding agent"
+    model: "deepseek-v4-pro"
+    prompt_version: "1.0"
+    human_reviewed: true
+    changes_accepted: true
+    notes: "mock 输出仅用于 offline 测试，不调用真实模型"
+
+  - date: "2026-11-22"
+    pr_id: "N/A（阶段 3，提交前）"
+    task: "实现 test/offline/test_semantic_eval.py：pairwise precision/recall 指标 + 阈值门禁（完美 mock→1.0/1.0；错误 mock→阻断）"
+    agent: "OpenCode coding agent"
+    model: "deepseek-v4-pro"
+    prompt_version: "1.0"
+    human_reviewed: true
+    changes_accepted: true
+    notes: "离线仅验证指标与门禁逻辑；真实模型评估待 live"
+
+  - date: "2026-11-22"
+    pr_id: "N/A（阶段 3，提交前）"
+    task: "实现 test/offline/test_requirements_schema.py：requirements.yaml 对 req-schema.json 的 schema 校验"
+    agent: "OpenCode coding agent"
+    model: "deepseek-v4-pro"
+    prompt_version: "1.0"
+    human_reviewed: true
+    changes_accepted: true
+    notes: "使用 PyYAML + jsonschema；CI step (a) 执行"
+
+  - date: "2026-11-22"
+    pr_id: "N/A（阶段 3，提交前）"
+    task: "扩展 .github/workflows/ci.yml：新增 b-module 作业（schema 校验 + pytest test/offline/ + 语义评估阈值阻断），保留上游 3 个作业"
+    agent: "OpenCode coding agent"
+    model: "deepseek-v4-pro"
+    prompt_version: "1.0"
+    human_reviewed: true
+    changes_accepted: true
+    notes: "未修改上游 test/smoke-install/lint 作业的既有逻辑"
+
+  - date: "2026-11-22"
+    pr_id: "N/A（阶段 3，提交前）"
+    task: "更新 trace-matrix.md、创建 evaluation-logbook.md（记录 model=deepseek-v4-pro、样例 v1、离线 mock 参考 precision/recall）"
+    agent: "OpenCode coding agent"
+    model: "deepseek-v4-pro"
+    prompt_version: "1.0"
+    human_reviewed: true
+    changes_accepted: true
+    notes: "evaluation-logbook 标注为 mock 参考值，真实模型评估待 live"

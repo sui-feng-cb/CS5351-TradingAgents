@@ -1,0 +1,74 @@
+{
+  "version": "v1",
+  "description": "Reference mock model outputs for offline B-module tests. Each case is a canned LLM suggestion (the same shape the model is prompted to return: {events:[], unmerged_evidence_ids:[]}) used to exercise the deterministic validator without a real model. Evidence IDs are examples against a run_id of 'mockrun'.",
+  "run_id": "mockrun",
+  "cases": {
+    "legal_grouping": {
+      "description": "A valid two-ticker event whose evidence IDs belong to the run and match the records.",
+      "events": [
+        {
+          "event_id": "e1",
+          "summary": "Apple and Microsoft announce AI chip partnership",
+          "tickers": ["AAPL", "MSFT"],
+          "evidence_ids": ["ev-mockrun-AAPL-0", "ev-mockrun-MSFT-0"]
+        }
+      ],
+      "unmerged_evidence_ids": ["ev-mockrun-TSLA-0"]
+    },
+    "single_ticker": {
+      "description": "An event backed by a single distinct ticker; the validator must degrade it to unmerged.",
+      "events": [
+        {
+          "event_id": "e1",
+          "summary": "Apple-only story",
+          "tickers": ["AAPL"],
+          "evidence_ids": ["ev-mockrun-AAPL-0", "ev-mockrun-AAPL-1"]
+        }
+      ],
+      "unmerged_evidence_ids": ["ev-mockrun-MSFT-0"]
+    },
+    "no_events": {
+      "description": "Records exist but the model found no cross-ticker common event.",
+      "events": [],
+      "unmerged_evidence_ids": ["ev-mockrun-AAPL-0", "ev-mockrun-MSFT-0", "ev-mockrun-TSLA-0"]
+    },
+    "forged_id": {
+      "description": "One event mixes a valid evidence ID with a forged one; the forged ID must be dropped.",
+      "events": [
+        {
+          "event_id": "e1",
+          "summary": "event with a forged evidence id",
+          "tickers": ["AAPL", "MSFT"],
+          "evidence_ids": ["ev-mockrun-AAPL-0", "ev-mockrun-FAKE-99"]
+        }
+      ],
+      "unmerged_evidence_ids": ["ev-mockrun-MSFT-0"]
+    },
+    "cross_run_id": {
+      "description": "An evidence ID issued by a different run; the validator must reject it as non-resolvable.",
+      "events": [
+        {
+          "event_id": "e1",
+          "summary": "event with a cross-run evidence id",
+          "tickers": ["AAPL", "MSFT"],
+          "evidence_ids": ["ev-mockrun-AAPL-0", "ev-otherrun-MSFT-0"]
+        }
+      ],
+      "unmerged_evidence_ids": []
+    },
+    "mismatched_ticker": {
+      "description": "A claim whose ticker disagrees with the authoritative record; the claim is dropped.",
+      "events": [
+        {
+          "event_id": "e1",
+          "summary": "ticker mismatch",
+          "evidence": [
+            { "evidence_id": "ev-mockrun-AAPL-0", "ticker": "MSFT", "date": "2026-11-15", "source": "Reuters" },
+            { "evidence_id": "ev-mockrun-MSFT-0", "ticker": "MSFT", "date": "2026-11-16", "source": "Bloomberg" }
+          ]
+        }
+      ],
+      "unmerged_evidence_ids": []
+    }
+  }
+}
