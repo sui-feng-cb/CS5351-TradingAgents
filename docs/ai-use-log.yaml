@@ -211,4 +211,16 @@ entries:
     transcript: pending final TUI export
     transcript_status: active-session TUI export pending
     validation: docs/verification/c-manifest.md
-    feature_status: tests-first; 20-expected-acceptance-failures; generator and timing tool baselined; independent-approval-pending; implementation-not-started
+    feature_status: tests-first; PR5-review-at-64f7bec-recorded-20-expected-C-failures-1532-passing; this-round-29-expected-C-failures-1532-passed; generator and timing tool baselined; independent-approval-pending; implementation-not-started
+  - id: C-MANIFEST-TESTS-002
+    scope: fr-c-nfr-c-tests-only-pr5-wrap-up
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: Finish PR #5 tests-only; fix JSON stdout parsing, per-sample run ids, warning assertions; run baseline/ruff/governance; update verification and AI-use evidence.
+    human_approval: tests-and-docs-only stage approved by the C owner; independent non-C Test-Plan-Approved review still required.
+    publication_direction: No commit, push, PR or merge in this revision; wait for diff review.
+    files: [test/offline/test_manifest.py, docs/verification/c-manifest.md, docs/ai-use-log.yaml]
+    transcript: pending final TUI export
+    transcript_status: active-session TUI export pending
+    validation: docs/verification/c-manifest.md
+    feature_status: baseline-29-expected-C-failures-1532-passed-1-skipped-1-deselected-100-subtests; ruff-and-governance-pass; NFR-C-timing-and-independent-approval-pending

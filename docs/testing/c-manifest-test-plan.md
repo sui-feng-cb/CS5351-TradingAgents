@@ -22,6 +22,13 @@ member other than C.
 `warnings`. Storage is one `run_manifest.json` per run directory plus a
 read-only local scan. This is a test-review proposal, not implemented.
 
+The CLI `manifest query --json` stdout outer structure is a **candidate contract
+pending human confirmation**: a JSON object with top-level `matches` (each entry
+carrying at least `ticker` and `trade_date`/date) and `warnings` (a list of
+human-readable warning strings). Each match also carries its report paths. The
+CLI filter test parses this shape from stdout; if the team picks a different
+outer structure, that test must be revised before implementation.
+
 ### Frozen v1 contract items (asserted by tests)
 
 - Field whitelist: `schema_version`, `run_id`, `ticker`, `asset_type`,
@@ -37,7 +44,9 @@ read-only local scan. This is a test-review proposal, not implemented.
 - `models` validates per-tier provider/model; `configured_data_vendors` is an
   explicit "configured" map (source config, not per-request provenance).
 - Errors record a fixed error `code` plus safe text, never a traceback blob and
-  never a secret value.
+  never a secret value. The candidate fixed values for a failed CLI analysis run
+  are `error.code == "analysis_failed"` and `error.message ==
+  "Analysis failed."`; these specific strings are **pending human confirmation**.
 - `reports` paths are relative to the results root; a skipped save is `null` and
   query succeeds. A declared-but-missing report warns and query continues.
 - Query tolerates a single bad JSON record, unknown `schema_version`, and missing
@@ -68,20 +77,22 @@ prematurely freeze the public API:
 |---|---|---|
 | FR-C schema | `test_fixed_sample_validates_against_v1_schema[success/failed]` | Exact field set; status in enum; UUID length 36 |
 | FR-C failed shape | `test_failed_sample_carries_an_error_code_and_null_reports` | `error.code == "no_data"`; reports null |
-| FR-C validation | `test_invalid_status_value_is_rejected_at_validation` | Bad status raises `ValueError` |
+| FR-C validation | `test_one_schema_error_is_rejected_at_validation[...]` (parametrized: invalid-status, extra-field, missing-required-field, invalid-uuid, invalid-date, naive-timestamp, wrong-reports-structure, wrong-error-structure) | From a valid sample, each single injected error raises `ValueError` |
 | FR-C write success | `test_successful_run_writes_dated_manifest` | Manifest on disk; status succeeded; finished_at set |
 | FR-C write failure | `test_failed_run_still_writes_manifest_with_error` | Manifest on disk for failed run |
-| FR-C CLI error | `test_cli_run_failure_is_recorded_with_a_safe_error_code` | Fixed code; no traceback in message |
+| FR-C CLI error | `test_cli_run_failure_is_recorded_with_a_safe_error_code` | On-disk `error.code == "analysis_failed"`, `error.message == "Analysis failed."`; raw exception text, `Traceback` and `RuntimeError` never persisted (candidate fixed values pending human confirmation) |
 | FR-C null path | `test_skipped_save_records_null_report_path_and_query_succeeds` | Null report; query ok; no warnings |
 | FR-C missing report | `test_declared_but_missing_report_warns_and_query_continues` | Warning; record still returned |
 | FR-C rerun | `test_same_day_rerun_keeps_two_distinct_records` | Two real CLI successes, same ticker/date/results root, save off; two on-disk succeeded manifests with distinct run ids and null report paths |
 | FR-C filters | `test_unfiltered_query_returns_all_runs`, `..._ticker_filter...`, `..._date_filter...`, `..._combined...` | Correct subset |
+| FR-C CLI filters | `test_cli_manifest_query_filters_by_ticker_date_and_reports_bad_json` | Real Typer subcommand over three ticker/date combos; `--ticker`, `--date`, combined and no-match each select the exact (ticker, date) set parsed from stdout JSON; one corrupt record warns and valid matches still return |
 | FR-C no match | `test_no_match_returns_empty_without_error` | Empty, no error |
 | FR-C bad JSON | `test_bad_json_is_skipped_and_other_records_still_return` | Good returned; one warning |
 | FR-C unknown version | `test_unknown_schema_version_is_skipped_with_warning` | Future version (stdlib-written record) skipped + warning; valid record still returned |
 | SEC-01 | `test_manifest_never_records_secret_values` | Real CLI failure with two distinct fake credentials (mock config + injected exception); on-disk manifest written, neither credential present |
 | FR-C unsafe path | `test_report_path_escaping_results_root_warns_and_is_not_followed` | Real out-of-root temp file; traversal record warns, valid record still returned, escaping path not followed |
 | FR-C CLI + no analysis | `test_cli_manifest_query_subcommand_runs_and_starts_no_analysis` | Stdlib-placed fixed manifest + report; real Typer subcommand exit 0 with the matched report relative path; patched `run_analysis`/`run_backtest` never called |
+| FR-C saved report path | `test_cli_saved_report_path_is_what_manifest_records` | Real `run_analysis` with saving on; stub `save_reports` writes and returns a non-default-named file; on-disk manifest's `reports.complete_report_md`, resolved from the results root, equals that file and is not absolute |
 
 Each case references its requirement ID via this table; assertions use literal
 contract values, not production helpers, so a bug cannot mirror itself.
@@ -94,11 +105,12 @@ outputs and the distinction between the early Python 3.14 environment and the
 current project Python 3.13 `.venv`.
 
 - Project interpreter (current): Python 3.13.18 `.venv`.
-  - Collection succeeds: 20 tests collected.
-  - Execution: 20 failed — all expected reds for the unimplemented C module and
-    query subcommand (two CLI-driven cases reach the on-disk
-    `run_manifest.json` assertion; the rest fail at the missing-module guard or
-    at `No such command 'manifest'`).
+  - Collection succeeds: 29 tests collected.
+  - Execution: all expected reds for the unimplemented C module and query
+    subcommand — the real-CLI cases (`same-day rerun`, `saved report path`,
+    `CLI failure`) reach the on-disk `run_manifest.json` assertion; the CLI query
+    cases fail at `No such command 'manifest'`; the rest fail at the
+    missing-module guard.
   - `ruff check test/offline/test_manifest.py`: pass.
   - `scripts/check_governance.py`: pass.
 - Early environment (superseded): Python 3.14.4 without project dependencies;

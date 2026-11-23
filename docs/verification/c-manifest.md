@@ -23,45 +23,59 @@ retained only to show the same expected-red outcome held before `.venv` existed.
 - Branch `C`; baseline commit family: this branch from `main` over
   `9fa1196fffbcfd9de5146d2dd2869df84ab99838` (see `docs/baseline.md`).
 
-## Expected C acceptance failure (tests-first) — current Python 3.13 `.venv`
+## PR #5 review snapshot (separate from this round)
 
-The C module `tradingagents.enhancements.manifest` and the `manifest query`
-subcommand are intentionally absent.
+At PR #5 head `64f7bec` the reviewer recorded **20 expected C failures and 1532
+passing tests**. That snapshot predates the additional P2 cases added since; it
+is kept as the review record and is NOT this round's measurement. This round's
+actual counts are in the next section.
+
+## Expected C acceptance failure (tests-first) — this round, Python 3.13 `.venv`
+
+Full-repository baseline (see the exact command and totals in "Full baseline"
+below). The C module `tradingagents.enhancements.manifest` and the `manifest
+query` subcommand are intentionally absent, so `test/offline/test_manifest.py`
+is the only file with failures.
 
 ```
-$ .venv/bin/python -m pytest -q --tb=line test/offline/test_manifest.py
-...
-20 failed in 11.05s
+$ TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
+29 failed, 1532 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed
 ```
 
-All 20 are expected reds. Two patterns:
+All 29 failures are the expected C/CLI reds, in three patterns:
 
-- CLI-driven cases reach the on-disk assertion because the real CLI path runs:
-  - `test_same_day_rerun_keeps_two_distinct_records`:
-    `test_manifest.py:405 assert len(manifests) == 2` → `0 == 2`.
-  - `test_cli_manifest_query_subcommand_runs_and_starts_no_analysis`:
-    `test_manifest.py:610 assert result.exit_code == 0` → `2`,
-    output `No such command 'manifest'`.
+- Real-CLI success/failure cases reach the on-disk `run_manifest.json`
+  assertion (e.g. `test_same_day_rerun_keeps_two_distinct_records`,
+  `test_cli_saved_report_path_is_what_manifest_records`,
+  `test_cli_run_failure_is_recorded_with_a_safe_error_code`): `0 == N` because
+  no manifest was written.
+- CLI query cases fail at `assert code == 0` / `assert result.exit_code == 0`
+  with output `No such command 'manifest'`.
 - Remaining cases fail at the missing-module guard:
 
 ```
 E   Failed: C implementation missing: tradingagents.enhancements.manifest
-    (ModuleNotFoundError("No module named 'tradingagents.enhancements'")).
+    (ImportError("cannot import name 'manifest' from 'tradingagents.enhancements'")).
     Expected until the approved implementation lands.
 ```
 
-Collection succeeds (20 collected); each case fails with a self-describing
-message, so the rest of the suite is not blocked.
+Collection succeeds (29 collected); each case fails with a self-describing
+message, so the rest of the suite is not blocked. No non-C file failed.
 
-## Lint and governance — current Python 3.13 `.venv`
+## Full baseline, Ruff, governance — this round
 
 ```
-$ .venv/bin/ruff check test/offline/test_manifest.py
+$ TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
+29 failed, 1532 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed in 256.04s
+$ .venv/bin/ruff check .
 All checks passed!
 $ .venv/bin/python scripts/check_governance.py
 Registry/schema, course layout and permission synchronization passed
 Basic credential-pattern scan passed (not a complete secret detector)
 ```
+
+The 29 failures are all `test/offline/test_manifest.py`; the skip is the optional
+`langchain_aws` Bedrock dependency and the deselection is the live DeepSeek test.
 
 ## Fixture generator (deterministic)
 
@@ -105,23 +119,26 @@ ERROR: expected 999 manifests in <ds1>, found 1000. Regenerate the dataset or
 pass the matching --count before timing.
 ```
 
-## Existing D test status (reported separately)
+## Existing D test status (historical, pre-main-merge — reported separately)
+
+This note describes D's state before D's implementation was merged into `main`
+and is kept only as history; it is not a current measurement of this round and
+not a C result.
 
 - Early environment (Python 3.14.4, no deps): `test/offline/test_eligibility.py`
   did not collect — `ModuleNotFoundError: No module named 'langchain_core'`. That
   was an environment-dependency failure, not a D acceptance result.
-- Current Python 3.13 `.venv`: the D file collects and reports
-  **32 failed, 3 passed in 10.00s**, i.e. the D module is also still absent and
-  its remaining cases are expected reds. This is D's own tests-first state, not a
-  C regression, and is noted only because it shares the checkout under test.
+- At the time recorded, on Python 3.13 `.venv` the D file reported **32 failed,
+  3 passed**, i.e. the D module was absent and its cases were expected reds.
 
 ## Pending
 
 - Non-C independent `Test-Plan-Approved` review of the tests-only head.
-- Full `test/offline` regression, `mypy`, `pip check` and the C timing run on the
-  project Python 3.13 environment (C suite, `ruff` and governance already ran on
-  3.13 here).
+- `mypy` and `pip check` on the project Python 3.13 environment (C suite,
+  `ruff`, governance and the full baseline already ran on 3.13 here).
 - NFR-C ≤2 s measurement is still untested; its threshold remains pending
   approval.
-- Team confirmation of A/Python run-association interface, backtest coverage and
-  reused-custom-path policy before any locking assertion is added.
+- Team confirmation of A/Python run-association interface, backtest coverage,
+  reused-custom-path policy, the `analysis_failed` / `Analysis failed.` fixed
+  values, and the CLI `matches`/`warnings` outer structure before any locking
+  assertion is finalized.

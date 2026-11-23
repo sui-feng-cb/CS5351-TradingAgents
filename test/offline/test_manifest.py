@@ -93,6 +93,199 @@ def _query(module, results_dir: Path, **filters):
 
 
 # --------------------------------------------------------------------------- #
+# Monitoring helpers: prove a read-only query opens nothing outside and writes
+# nothing inside the results root. Wrapping the common Python open/write entry
+# points catches same-byte rewrites that a before/after diff alone would miss.
+# --------------------------------------------------------------------------- #
+
+def _norm(path) -> Path:
+    return Path(path).resolve()
+
+
+class _OpenSpy:
+    """Record every open/read attempt aimed at one watched target path."""
+
+    def __init__(self, target: Path):
+        self.target = _norm(target)
+        self.hits: list[str] = []
+
+    def check(self, path, how: str) -> None:
+        try:
+            resolved = _norm(path)
+        except (TypeError, ValueError):
+            return
+        if resolved == self.target:
+            self.hits.append(f"{how}: {resolved}")
+
+    def install(self, monkeypatch) -> None:
+        import builtins
+        import io
+        import os
+
+        spy = self
+        real_builtin_open = builtins.open
+        real_io_open = io.open
+        real_os_open = os.open
+        real_read_text = Path.read_text
+        real_read_bytes = Path.read_bytes
+        real_path_open = Path.open
+
+        def spy_builtin_open(file, *a, **k):
+            spy.check(file, "builtins.open")
+            return real_builtin_open(file, *a, **k)
+
+        def spy_io_open(file, *a, **k):
+            spy.check(file, "io.open")
+            return real_io_open(file, *a, **k)
+
+        def spy_os_open(path, *a, **k):
+            spy.check(path, "os.open")
+            return real_os_open(path, *a, **k)
+
+        def spy_read_text(self, *a, **k):
+            spy.check(self, "Path.read_text")
+            return real_read_text(self, *a, **k)
+
+        def spy_read_bytes(self, *a, **k):
+            spy.check(self, "Path.read_bytes")
+            return real_read_bytes(self, *a, **k)
+
+        def spy_path_open(self, *a, **k):
+            spy.check(self, "Path.open")
+            return real_path_open(self, *a, **k)
+
+        monkeypatch.setattr(builtins, "open", spy_builtin_open)
+        monkeypatch.setattr(io, "open", spy_io_open)
+        monkeypatch.setattr(os, "open", spy_os_open)
+        monkeypatch.setattr(Path, "read_text", spy_read_text)
+        monkeypatch.setattr(Path, "read_bytes", spy_read_bytes)
+        monkeypatch.setattr(Path, "open", spy_path_open)
+
+
+class _WriteSpy:
+    """Record every mutation attempt whose target is inside a watched root.
+
+    Covers create/append/overwrite (including a same-byte rewrite), delete,
+    rename and replace. Only *attempts*, not byte changes, are recorded.
+    """
+
+    def __init__(self, root: Path):
+        self.root = _norm(root)
+        self.hits: list[str] = []
+
+    def _inside(self, path) -> bool:
+        try:
+            resolved = _norm(path)
+        except (TypeError, ValueError):
+            return False
+        return resolved == self.root or self.root in resolved.parents
+
+    def record(self, path, how: str) -> None:
+        if self._inside(path):
+            self.hits.append(f"{how}: {_norm(path)}")
+
+    def install(self, monkeypatch) -> None:
+        import builtins
+        import io
+        import os
+        import shutil
+
+        spy = self
+        real_builtin_open = builtins.open
+        real_io_open = io.open
+        real_os_open = os.open
+        real_write_text = Path.write_text
+        real_write_bytes = Path.write_bytes
+        real_path_open = Path.open
+        real_replace = os.replace
+        real_rename = os.rename
+        real_remove = os.remove
+        real_unlink = os.unlink
+
+        def spy_builtin_open(file, mode="r", *a, **k):
+            if any(ch in mode for ch in "wax+"):
+                spy.record(file, f"builtins.open[{mode}]")
+            return real_builtin_open(file, mode, *a, **k)
+
+        def spy_io_open(file, mode="r", *a, **k):
+            if any(ch in mode for ch in "wax+"):
+                spy.record(file, f"io.open[{mode}]")
+            return real_io_open(file, mode, *a, **k)
+
+        def spy_os_open(path, flags, *a, **k):
+            if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+                spy.record(path, f"os.open[{flags}]")
+            return real_os_open(path, flags, *a, **k)
+
+        def spy_write_text(self, *a, **k):
+            spy.record(self, "Path.write_text")
+            return real_write_text(self, *a, **k)
+
+        def spy_write_bytes(self, *a, **k):
+            spy.record(self, "Path.write_bytes")
+            return real_write_bytes(self, *a, **k)
+
+        def spy_path_open(self, mode="r", *a, **k):
+            if any(ch in mode for ch in "wax+"):
+                spy.record(self, f"Path.open[{mode}]")
+            return real_path_open(self, mode, *a, **k)
+
+        def spy_replace(src, dst, *a, **k):
+            spy.record(src, "os.replace[src]")
+            spy.record(dst, "os.replace[dst]")
+            return real_replace(src, dst, *a, **k)
+
+        def spy_rename(src, dst, *a, **k):
+            spy.record(src, "os.rename[src]")
+            spy.record(dst, "os.rename[dst]")
+            return real_rename(src, dst, *a, **k)
+
+        def spy_remove(path, *a, **k):
+            spy.record(path, "os.remove")
+            return real_remove(path, *a, **k)
+
+        def spy_unlink(path, *a, **k):
+            spy.record(path, "os.unlink")
+            return real_unlink(path, *a, **k)
+
+        monkeypatch.setattr(builtins, "open", spy_builtin_open)
+        monkeypatch.setattr(io, "open", spy_io_open)
+        monkeypatch.setattr(os, "open", spy_os_open)
+        monkeypatch.setattr(Path, "write_text", spy_write_text)
+        monkeypatch.setattr(Path, "write_bytes", spy_write_bytes)
+        monkeypatch.setattr(Path, "open", spy_path_open)
+        monkeypatch.setattr(os, "replace", spy_replace)
+        monkeypatch.setattr(os, "rename", spy_rename)
+        monkeypatch.setattr(os, "remove", spy_remove)
+        monkeypatch.setattr(os, "unlink", spy_unlink)
+        for name in ("copy", "copy2", "copyfile", "copytree", "move"):
+            real = getattr(shutil, name)
+
+            def make(real=real, name=name):
+                def spy_shutil(*a, **k):
+                    if a:
+                        spy.record(a[0], f"shutil.{name}[src]")
+                    if len(a) > 1:
+                        spy.record(a[1], f"shutil.{name}[dst]")
+                    return real(*a, **k)
+                return spy_shutil
+
+            monkeypatch.setattr(shutil, name, make())
+
+
+def _snapshot(root: Path):
+    """Directory entries and every file's bytes under ``root``, for a diff."""
+
+    root = Path(root)
+    entries = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+    blobs = {}
+    for p in root.rglob("*"):
+        if p.is_file():
+            blobs[str(p.relative_to(root))] = p.read_bytes()
+    return {"entries": entries, "blobs": blobs}
+
+
+# --------------------------------------------------------------------------- #
 # Schema of the two fixed samples
 # --------------------------------------------------------------------------- #
 
@@ -124,10 +317,26 @@ def test_failed_sample_carries_an_error_code_and_null_reports():
 
 
 @pytest.mark.unit
-def test_invalid_status_value_is_rejected_at_validation():
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda d: d.__setitem__("status", "done"), id="invalid-status"),
+        pytest.param(lambda d: d.__setitem__("extra_top_level", 1), id="extra-field"),
+        pytest.param(lambda d: d.pop("ticker"), id="missing-required-field"),
+        pytest.param(lambda d: d.__setitem__("run_id", "not-a-uuid"), id="invalid-uuid"),
+        pytest.param(lambda d: d.__setitem__("trade_date", "2026-13-40"), id="invalid-date"),
+        pytest.param(lambda d: d.__setitem__("started_at", "2026-11-20T14:00:00"),
+                     id="naive-timestamp"),
+        pytest.param(lambda d: d.__setitem__("reports", "reports/complete_report.md"),
+                     id="wrong-reports-structure"),
+        pytest.param(lambda d: d.__setitem__("error", "boom"), id="wrong-error-structure"),
+    ],
+)
+def test_one_schema_error_is_rejected_at_validation(mutate):
     module = _manifest_module()
+    # Start from the valid sample and introduce exactly one error.
     data = json.loads(SUCCESS.read_text(encoding="utf-8"))
-    data["status"] = "done"  # not one of running|succeeded|failed
+    mutate(data)
 
     with pytest.raises(ValueError):
         module.validate_manifest(module.ManifestRecord.from_dict(data))
@@ -245,6 +454,31 @@ class _SuccessGraph:
                    "final_rating": "Hold"}
 
 
+class _SavingSuccessGraph(_SuccessGraph):
+    """A successful graph whose ``save_reports`` writes a non-default-named file.
+
+    Mirrors the CLI save path: ``run_analysis`` calls ``save_reports`` with the
+    default path, but this stub writes ``custom_report.md`` underneath it and
+    returns that exact file, so the test can prove the manifest records the path
+    ``save_reports`` actually produced rather than the default name.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.saved_path: Path | None = None
+
+    def default_report_path(self, ticker):
+        return Path(self.config_results_dir) / "reports" / f"{ticker}_default"
+
+    def save_reports(self, final_state, ticker, save_path=None, html=True):
+        save_path = Path(save_path)
+        save_path.mkdir(parents=True, exist_ok=True)
+        target = save_path / "custom_report.md"
+        target.write_text("custom report\n", encoding="utf-8")
+        self.saved_path = target
+        return target
+
+
 class _NullLive:
     def __init__(self, *a, **k):
         pass
@@ -344,14 +578,84 @@ def _run_successful_cli(tmp_path, monkeypatch, *, results_dir, ticker="NVDA",
     return results_dir
 
 
+def _run_saving_cli(tmp_path, monkeypatch, *, results_dir, ticker="NVDA",
+                    analysis_date="2026-01-10"):
+    """Drive the real ``cli.run.run_analysis`` to success with saving enabled.
+
+    Answers the save question with the flags (``save=True, show=False,
+    html=False``) so ``_offer_reports`` calls ``save_reports`` with the default
+    path; the stub writes a custom-named file and returns it. Returns
+    ``(results_dir, saved_path)``.
+    """
+
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    graph = _SavingSuccessGraph()
+    graph.config_results_dir = str(results_dir)
+    config = {"data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)}
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", lambda *a, **k: graph)
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": ticker, "analysis_date": analysis_date,
+        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: config)
+
+    def _no_prompt(*a, **k):
+        raise AssertionError("saving/once flags were supplied, so run_analysis must not prompt")
+
+    monkeypatch.setattr(cli_run.typer, "prompt", _no_prompt)
+
+    cli_run.run_analysis(flags={"save": True, "show": False, "html": False})
+    return results_dir, graph.saved_path
+
+
 @pytest.mark.unit
 def test_cli_run_failure_is_recorded_with_a_safe_error_code(tmp_path, monkeypatch):
-    results_dir = _run_failing_cli(tmp_path, monkeypatch)
+    # A distinctive original exception message that must NOT reach the manifest.
+    crash_message = "simulated mid-run crash SECRET-INTERNAL-DETAIL"
+    results_dir = _run_failing_cli(tmp_path, monkeypatch, crash_message=crash_message)
 
     manifests = list(results_dir.rglob("run_manifest.json"))
     assert len(manifests) == 1
     written = json.loads(manifests[0].read_text(encoding="utf-8"))
     assert written["status"] == "failed"
+    # Candidate contract values (pending human confirmation; see the test plan).
+    assert written["error"]["code"] == "analysis_failed"
+    assert written["error"]["message"] == "Analysis failed."
+    # The raw exception text and any traceback must never be persisted.
+    serialized = manifests[0].read_text(encoding="utf-8")
+    assert "simulated mid-run crash" not in serialized
+    assert "SECRET-INTERNAL-DETAIL" not in serialized
+    assert "Traceback" not in serialized
+    assert "RuntimeError" not in serialized
+
+
+@pytest.mark.unit
+def test_cli_saved_report_path_is_what_manifest_records(tmp_path, monkeypatch):
+    results_dir, saved_path = _run_saving_cli(
+        tmp_path, monkeypatch, results_dir=tmp_path / "results",
+        ticker="NVDA", analysis_date="2026-01-10")
+
+    # The stub wrote and returned a non-default-named report.
+    assert saved_path is not None and saved_path.exists()
+    assert saved_path.name == "custom_report.md"
+    assert saved_path.name != "complete_report.md"
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    written = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert written["status"] == "succeeded"
+    # The manifest records the path save_reports returned, relative to the root.
+    recorded = written["reports"]["complete_report_md"]
+    assert recorded is not None
+    resolved = (results_dir / recorded).resolve()
+    assert resolved == saved_path.resolve()
+    assert not Path(recorded).is_absolute()
 
 
 # --------------------------------------------------------------------------- #
@@ -547,26 +851,37 @@ def test_manifest_never_records_secret_values(tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
-def test_report_path_escaping_results_root_warns_and_is_not_followed(tmp_path):
-    module = _manifest_module()
+def test_report_path_escaping_results_root_warns_and_is_not_followed(tmp_path, monkeypatch):
+    # A real file outside the results root, reached from the results root via a
+    # traversal ref. Create it and prove the resolution up front, before the
+    # missing-module guard, so this precheck runs even while the red test fails.
     results_root = tmp_path / "results"
-    good = results_root / "AAPL" / "2026-11-20"
-    _write_manifest(module, good, ticker="AAPL")
-    # A real file outside the results root, reached by a traversal path; write
-    # the escaping manifest directly with the stdlib so the C writer cannot
-    # sanitise it away before the query sees it.
+    results_root.mkdir(parents=True)
     outside_file = tmp_path / "outside_secret.md"
     outside_file.write_text("do not follow\n", encoding="utf-8")
+    report_ref = "../outside_secret.md"
+    assert (results_root / report_ref).resolve() == outside_file.resolve()
+    assert outside_file.exists()
+
+    module = _manifest_module()
+    good = results_root / "AAPL" / "2026-11-20"
+    _write_manifest(module, good, ticker="AAPL")
+    # Write the escaping manifest directly with the stdlib so the C writer cannot
+    # sanitise the traversal ref before the query sees it.
     bad = results_root / "MSFT" / "2026-11-20"
     bad.mkdir(parents=True)
     data = json.loads(SUCCESS.read_text(encoding="utf-8"))
     data.update(ticker="MSFT", run_id="88888888-8888-4888-8888-888888888888",
-                reports={"complete_report_md": "../../../outside_secret.md",
+                reports={"complete_report_md": report_ref,
                          "complete_report_html": None})
     (bad / "run_manifest.json").write_text(json.dumps(data), encoding="utf-8")
 
-    outcome = _query(module, results_root)
+    spy = _OpenSpy(outside_file)
+    with monkeypatch.context() as m:
+        spy.install(m)
+        outcome = _query(module, results_root)
 
+    assert spy.hits == [], f"query opened the out-of-root file: {spy.hits}"
     assert [m.ticker for m in outcome.matches] == ["AAPL"]
     assert any("path" in w.lower() or "unsafe" in w.lower() for w in outcome.warnings)
     for match in outcome.matches:
@@ -602,11 +917,108 @@ def test_cli_manifest_query_subcommand_runs_and_starts_no_analysis(tmp_path, mon
     monkeypatch.setattr(cli_main, "run_analysis", _boom, raising=False)
     monkeypatch.setattr(cli_main, "run_backtest", _boom, raising=False)
 
-    result = CliRunner().invoke(
-        cli_main.app,
-        ["manifest", "query", "--results-dir", str(tmp_path), "--ticker", "AAPL", "--json"],
-    )
+    before = _snapshot(tmp_path)
+    write_spy = _WriteSpy(tmp_path)
+    with monkeypatch.context() as m:
+        write_spy.install(m)
+        result = CliRunner().invoke(
+            cli_main.app,
+            ["manifest", "query", "--results-dir", str(tmp_path), "--ticker", "AAPL", "--json"],
+        )
 
+    # Snapshot after the monitoring context exits, so a real write during the
+    # query is what the byte diff reflects, not the spies' own bookkeeping.
+    after = _snapshot(tmp_path)
+    assert write_spy.hits == [], f"query wrote inside the results root: {write_spy.hits}"
+    assert after == before, "query changed entries or bytes under the results root"
     assert result.exit_code == 0, result.output
     assert "AAPL" in result.output
     assert "AAPL/2026-11-20/reports/complete_report.md" in result.output
+
+
+def _seed_strlib_manifest(results_root: Path, ticker: str, trade_date: str):
+    """Write a valid manifest directly with the stdlib (no C writer) under a run dir.
+
+    Each seeded record gets its own run id so distinct combos never collide.
+    """
+
+    run_dir = results_root / ticker / trade_date
+    (run_dir / "reports").mkdir(parents=True, exist_ok=True)
+    (run_dir / "reports" / "complete_report.md").write_text("report body\n", encoding="utf-8")
+    data = json.loads(SUCCESS.read_text(encoding="utf-8"))
+    data.update(
+        run_id=str(uuid.uuid4()),
+        ticker=ticker,
+        trade_date=trade_date,
+        as_of=trade_date,
+        reports={"complete_report_md": f"{ticker}/{trade_date}/reports/complete_report.md",
+                 "complete_report_html": None},
+    )
+    (run_dir / "run_manifest.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+def _invoke_query(cli_main, args):
+    """Invoke the real ``manifest query`` subcommand and parse its JSON stdout.
+
+    Returns ``(exit_code, payload, raw_output)``. ``payload`` is parsed from
+    ``result.stdout`` (the machine channel); ``raw_output`` is ``result.output``
+    kept for diagnostics. ``payload`` is ``None`` when stdout is not JSON.
+    """
+
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(cli_main.app, ["manifest", "query", *args, "--json"])
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        payload = None
+    return result.exit_code, payload, result.output
+
+
+@pytest.mark.unit
+def test_cli_manifest_query_filters_by_ticker_date_and_reports_bad_json(tmp_path, monkeypatch):
+    # Three ticker/date combos so each filter selects a distinct set, plus one
+    # corrupt record that must warn without hiding the valid matches.
+    _seed_strlib_manifest(tmp_path, "AAPL", "2026-11-20")
+    _seed_strlib_manifest(tmp_path, "MSFT", "2026-11-20")
+    _seed_strlib_manifest(tmp_path, "AAPL", "2026-11-19")
+    broken = tmp_path / "NVDA" / "2026-11-20"
+    broken.mkdir(parents=True)
+    (broken / "run_manifest.json").write_text("{ not json", encoding="utf-8")
+
+    import cli.main as cli_main
+
+    # A query starts nothing: building a graph or touching a vendor fails hard.
+    def _boom(*args, **kwargs):
+        raise AssertionError("manifest query must not start an analysis or a data vendor")
+
+    monkeypatch.setattr(cli_main, "run_analysis", _boom, raising=False)
+    monkeypatch.setattr(cli_main, "run_backtest", _boom, raising=False)
+
+    def pairs(payload):
+        # Candidate outer shape: {"matches": [{"ticker":..,"trade_date":..}], "warnings": [...]}.
+        return sorted((m["ticker"], m["trade_date"]) for m in payload["matches"])
+
+    code, payload, out = _invoke_query(
+        cli_main, ["--results-dir", str(tmp_path), "--ticker", "AAPL"])
+    assert code == 0, out
+    assert "warnings" in payload  # candidate outer structure
+    assert pairs(payload) == [("AAPL", "2026-11-19"), ("AAPL", "2026-11-20")]
+
+    # A normal date query returns valid records and still reports the corrupt one.
+    code, payload, out = _invoke_query(
+        cli_main, ["--results-dir", str(tmp_path), "--date", "2026-11-20"])
+    assert code == 0, out
+    assert pairs(payload) == [("AAPL", "2026-11-20"), ("MSFT", "2026-11-20")]
+    assert payload["warnings"], "corrupt record should warn while valid matches return"
+
+    code, payload, out = _invoke_query(
+        cli_main, ["--results-dir", str(tmp_path), "--ticker", "AAPL", "--date", "2026-11-19"])
+    assert code == 0, out
+    assert pairs(payload) == [("AAPL", "2026-11-19")]
+
+    # No match: only the empty result is asserted here.
+    code, payload, out = _invoke_query(
+        cli_main, ["--results-dir", str(tmp_path), "--ticker", "ZZZZ"])
+    assert code == 0, out
+    assert pairs(payload) == []
