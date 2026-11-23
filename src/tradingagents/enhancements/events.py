@@ -429,28 +429,21 @@ def _normalize_article(raw: dict) -> dict:
 
 
 def _default_fetcher(ticker: str, start: str, end: str) -> list[dict]:
-    """Lazy structured adapter over the upstream Yahoo Finance news extractor.
+    """Placeholder live fetcher (the B module must not import vendor libraries).
 
-    Returns the upstream ``_extract_article_data`` dicts (``title`` / ``summary``
-    / ``publisher`` / ``link`` / ``pub_date``) that fall inside ``[start, end]``;
-    :func:`fetch_records` normalises them. All heavy imports are function-local.
+    The data layer's public news API (``route_to_vendor("get_news", ...)`` /
+    ``get_news_yfinance``) returns a formatted string that drops per-article
+    ``pub_date``, so it cannot be turned back into the structured
+    ``{title, snippet, source, date, pub_date, link}`` records ``fetch_records``
+    requires without re-reaching the vendor feed. Until ``dataflows`` exposes a
+    structured news API, this live path fails loudly rather than emit incomplete
+    evidence. Inject a ``fetcher`` callable (as the offline tests do) for a run.
     """
-    import yfinance as yf
-
-    from tradingagents.dataflows.config import get_config
-    from tradingagents.dataflows.date_window import in_window
-    from tradingagents.dataflows.symbols import normalize_symbol
-    from tradingagents.dataflows.vendors.yahoo.common import yf_retry
-    from tradingagents.dataflows.vendors.yahoo.news import _extract_article_data
-
-    limit = get_config()["news_article_limit"]
-    canonical = normalize_symbol(ticker)
-    feed = yf_retry(lambda: yf.Ticker(canonical).get_news(count=limit)) or []
-    articles = [_extract_article_data(a) for a in feed]
-
-    start_dt = _dt.datetime.strptime(start, "%Y-%m-%d")
-    end_dt = _dt.datetime.strptime(end, "%Y-%m-%d")
-    return [a for a in articles if in_window(a["pub_date"], start_dt, end_dt)]
+    raise NotImplementedError(
+        "The data layer exposes no structured news API; provide a `fetcher` "
+        "callable, or add a dataflows function returning structured news records "
+        "before wiring this live path."
+    )
 
 
 def fetch_records(

@@ -29,7 +29,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
 from openai import OpenAI  # noqa: E402
+
+def _has_real_deepseek_key() -> bool:
+    key = os.environ.get("DEEPSEEK_API_KEY", "")
+    return bool(key) and key != "placeholder"
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 SEMANTIC_EVAL_PATH = FIXTURES_DIR / "semantic_eval.json"
@@ -271,6 +276,11 @@ def _assert_gate(metrics: LiveMetrics) -> None:
         )
 
 
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not _has_real_deepseek_key(),
+    reason="DEEPSEEK_API_KEY not set (or placeholder); skipping live API call",
+)
 def test_live_semantic_eval_gate():
     """NFR-B-3: real-model pairwise precision >= 0.80 and recall >= 0.70."""
     pairs = load_pairs()
