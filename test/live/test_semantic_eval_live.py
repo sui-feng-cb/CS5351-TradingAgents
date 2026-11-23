@@ -11,8 +11,18 @@ Definitions are frozen in ``docs/architecture/evaluation-table.md`` §3:
     FP = labeled different_event BUT model answers "same"
     FN = labeled same_event BUT model answers "different"
 
-    precision = TP / (TP + FP)   (threshold >= 0.80)
-    recall    = TP / (TP + FN)   (threshold >= 0.70)
+     precision = TP / (TP + FP)   (threshold >= 0.80)
+     recall    = TP / (TP + FN)   (threshold >= 0.70)
+
+The gate also requires full coverage: every frozen pair must be evaluated and no
+pair may fail (API error / unparsed verdict). A handful of surviving pairs cannot
+mask 23 failures as a perfect score.
+
+Scope note (technical debt, owned by the coordinator): this file judges pairwise
+``same``/``different`` labels with a dedicated prompt, not the real ``merge_once``
+grouping flow. Wiring the real merge prompt plus a replayable end-to-end coverage
+check is a follow-up for the coordinator's integration work; until then this
+pairwise judge is the frozen NFR-B semantic gate.
 
 If the gate fails, the test (or ``__main__``) exits non-zero, so this file also
 doubles as the CI live semantic-evaluation step.
@@ -42,6 +52,11 @@ SEMANTIC_EVAL_PATH = FIXTURES_DIR / "semantic_eval.json"
 
 PRECISION_THRESHOLD = 0.80
 RECALL_THRESHOLD = 0.70
+# The frozen set must be fully evaluated: a skipped/API-failed pair means we do
+# not know its correctness, so precision/recall over the survivors alone must
+# not be allowed to pass the gate (e.g. TP=1/attempted=1/failed=23).
+COVERAGE_THRESHOLD = 1.0
+MAX_FAILED = 0
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-pro"
@@ -132,6 +147,8 @@ class LiveMetrics:
     fn: int
     attempted: int
     failed: int
+    total: int
+    coverage: float
 
 
 def load_pairs(path: Path = SEMANTIC_EVAL_PATH) -> list[Pair]:
@@ -198,8 +215,11 @@ def _call_model(client: OpenAI, model: str, prompt: str) -> str:
 def run_live_eval(pairs: list[Pair]) -> tuple[list[PairResult], LiveMetrics]:
     """Call the real model once per pair and compute pairwise metrics.
 
-    A pair whose call fails is recorded (reason preserved) and skipped; metrics
-    are computed over the successfully judged subset only.
+    Every pair is attempted exactly once. A pair whose call or verdict fails is
+    recorded (reason preserved) and counted as ``failed``; it is *not* silently
+    skipped. Metrics (precision/recall) are computed over the successfully judged
+    subset, but the gate separately requires full coverage and zero failures, so
+    a handful of survivors cannot masquerade as a pass.
     """
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
@@ -243,11 +263,13 @@ def run_live_eval(pairs: list[Pair]) -> tuple[list[PairResult], LiveMetrics]:
     tp = sum(1 for r in results if r.is_true_positive)
     fp = sum(1 for r in results if r.is_false_positive)
     fn = sum(1 for r in results if r.is_false_negative)
-    attempted = len(results) - sum(1 for r in results if r.failed)
-    failed = len(results) - attempted
+    total = len(results)
+    attempted = sum(1 for r in results if not r.failed)
+    failed = total - attempted
 
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
+    coverage = attempted / total if total else 0.0
     metrics = LiveMetrics(
         precision=precision,
         recall=recall,
@@ -256,17 +278,28 @@ def run_live_eval(pairs: list[Pair]) -> tuple[list[PairResult], LiveMetrics]:
         fn=fn,
         attempted=attempted,
         failed=failed,
+        total=total,
+        coverage=coverage,
     )
 
     print(
         f"live semantic eval: TP={tp} FP={fp} FN={fn} "
-        f"attempted={attempted} failed={failed} "
-        f"precision={precision:.4f} recall={recall:.4f}"
+        f"attempted={attempted} failed={failed} total={total} "
+        f"precision={precision:.4f} recall={recall:.4f} coverage={coverage:.4f}"
     )
     return results, metrics
 
 
 def _assert_gate(metrics: LiveMetrics) -> None:
+    if metrics.failed > MAX_FAILED:
+        raise AssertionError(
+            f"{metrics.failed} pairs failed to evaluate (max {MAX_FAILED}); "
+            "coverage is incomplete, so the gate cannot pass"
+        )
+    if metrics.coverage < COVERAGE_THRESHOLD:
+        raise AssertionError(
+            f"pairwise coverage {metrics.coverage:.4f} < {COVERAGE_THRESHOLD}"
+        )
     if metrics.precision < PRECISION_THRESHOLD:
         raise AssertionError(
             f"pairwise precision {metrics.precision:.4f} < {PRECISION_THRESHOLD}"
@@ -283,7 +316,7 @@ def _assert_gate(metrics: LiveMetrics) -> None:
     reason="DEEPSEEK_API_KEY not set (or placeholder); skipping live API call",
 )
 def test_live_semantic_eval_gate():
-    """NFR-B-3: real-model pairwise precision >= 0.80 and recall >= 0.70."""
+    """NFR-B-3: real-model pairwise precision >= 0.80, recall >= 0.70, full coverage."""
     pairs = load_pairs()
     _, metrics = run_live_eval(pairs)
     _assert_gate(metrics)

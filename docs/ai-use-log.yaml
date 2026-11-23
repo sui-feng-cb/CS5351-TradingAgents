@@ -278,3 +278,12 @@ entries:
     validation: "test/offline/test_events.py 39 passed；ruff/mypy/pip check 通过；真实模型语义评估待接入 CI。"
     feature_status: "本地实现与验证完成；events.py 语义变更需团队批准评估并接入 CI 后解除治理阻断。"
     transcript_status: "active-session TUI export pending"
+  - id: B-EVENTS-IMPL-002
+    scope: fr-b-nfr-b-review-fixes-round-3
+    agent: OpenCode
+    requirements: [FR-B, NFR-B]
+    user_direction: "成员 B 要求按 PR #6 第三轮复审（CHANGES REQUIRED）修复 events.py 的时间/数量边界、输出 schema 防御、失败状态三态区分，并明确默认入口为可注入核心组件范围。"
+    files: [src/tradingagents/enhancements/events.py, test/offline/test_events.py, test/live/test_semantic_eval_live.py]
+    validation: "test/offline/test_events.py 53 passed；ruff check . 通过；git diff --check 通过。"
+    feature_status: "四类功能问题已修复并补 14 个负例；默认入口明确为可注入核心组件（FR-B 完整集成待团队接入 data layer 结构化新闻 API）。"
+    transcript_status: "active-session TUI export pending"

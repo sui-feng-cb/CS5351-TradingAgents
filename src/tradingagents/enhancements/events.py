@@ -21,6 +21,17 @@ The prompt for the merge step is inlined below as :data:`_MERGE_PROMPT_TEMPLATE`
 (no file read), and upstream ``tradingagents.*`` / ``yfinance`` are imported
 *lazily inside function bodies* so a plain ``import`` of this module pulls in
 only the standard library.
+
+Scope (FR-B integration status): this module delivers the **injectable
+deterministic core** of the B-module contract. ``fetch_records`` accepts an
+injected ``fetcher`` callable and ``merge_once`` accepts an injected ``llm``
+callable, so the offline / deterministic tests exercise the full grouping and
+validation pipeline without a network or a real model. The **live wiring** of a
+real news data layer and a real model client is *not* part of this module yet:
+see :func:`_default_fetcher` and :func:`_default_llm` for the explicit TODO and
+hand-off notes. Until ``dataflows`` exposes a structured news API and a model
+client is wired in a coordinated integration change, the default ``fetcher`` /
+``llm`` fail loudly rather than emit unverified facts (NFR-B).
 """
 
 from __future__ import annotations
@@ -56,11 +67,18 @@ __all__ = [
 
 
 class MergeStatus(StrEnum):
-    """Final merge status of a run (FR-B-6)."""
+    """Final merge status of a run (FR-B-6).
+
+    ``ANALYSIS_INCOMPLETE`` is distinct from ``NO_COMMON_EVENT``: the former
+    means the model call or its output could not be parsed (an observable
+    failure with a preserved reason), while the latter means the model answered
+    and reported no cross-ticker common event.
+    """
 
     MERGED = "merged"
     NO_COMMON_EVENT = "no_common_event"
     DATA_UNAVAILABLE = "data_unavailable"
+    ANALYSIS_INCOMPLETE = "analysis_incomplete"
 
 
 @dataclass(frozen=True)
@@ -233,6 +251,7 @@ class MergeResult:
     events: list[MergedEvent] = field(default_factory=list)
     unmerged: list[NewsRecord] = field(default_factory=list)
     dropped_invalid: list[DroppedEvidence] = field(default_factory=list)
+    failure_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -241,6 +260,7 @@ class MergeResult:
             "events": [event.to_dict() for event in self.events],
             "unmerged": [record.to_dict() for record in self.unmerged],
             "dropped_invalid": [item.to_dict() for item in self.dropped_invalid],
+            "failure_reason": self.failure_reason,
         }
 
     @classmethod
@@ -253,6 +273,7 @@ class MergeResult:
             dropped_invalid=[
                 DroppedEvidence.from_dict(item) for item in data.get("dropped_invalid", [])
             ],
+            failure_reason=data.get("failure_reason", ""),
         )
 
 
@@ -429,21 +450,40 @@ def _normalize_article(raw: dict) -> dict:
 
 
 def _default_fetcher(ticker: str, start: str, end: str) -> list[dict]:
-    """Placeholder live fetcher (the B module must not import vendor libraries).
+    """Not wired: the B module has no default live news fetcher yet (FR-B-2 TODO).
 
     The data layer's public news API (``route_to_vendor("get_news", ...)`` /
-    ``get_news_yfinance``) returns a formatted string that drops per-article
-    ``pub_date``, so it cannot be turned back into the structured
-    ``{title, snippet, source, date, pub_date, link}`` records ``fetch_records``
-    requires without re-reaching the vendor feed. Until ``dataflows`` exposes a
-    structured news API, this live path fails loudly rather than emit incomplete
-    evidence. Inject a ``fetcher`` callable (as the offline tests do) for a run.
+    ``get_news_yfinance``) returns a **formatted string** that discards the
+    per-article ``pub_date``, so it cannot be turned back into the structured
+    ``{title, snippet, source, date, pub_date, link}`` records that
+    :func:`fetch_records` requires without re-reaching the vendor feed (and
+    importing the private ``_extract_article_data`` helper, which would be a
+    fragile cross-layer reach into ``dataflows.vendors.yahoo.news``).
+
+    This PR therefore ships the **injectable core only**: callers pass a
+    ``fetcher`` callable (the offline tests do exactly this). Wiring a real
+    data layer is a pending integration TODO owned by the team, not a silent
+    default: it must land as a coordinated data-layer change that exposes a
+    *structured* news API (per-article ``title/summary/publisher/pub_date/link``)
+    before this function is implemented. Until then it fails loudly so an
+    offline run can never emit incomplete evidence (NFR-B / INV-B).
     """
     raise NotImplementedError(
-        "The data layer exposes no structured news API; provide a `fetcher` "
+        "No default live news fetcher is wired: the data layer exposes only a "
+        "formatted string (no structured per-article records). Inject a `fetcher` "
         "callable, or add a dataflows function returning structured news records "
-        "before wiring this live path."
+        "before wiring this live path (see module docstring TODO)."
     )
+
+
+def _parse_record_date(value: str) -> _dt.date | None:
+    """Parse a normalized ``YYYY-MM-DD`` date, or ``None`` when absent/malformed."""
+    if not value:
+        return None
+    try:
+        return _dt.date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def fetch_records(
@@ -453,20 +493,44 @@ def fetch_records(
     *,
     fetcher: Callable[[str, str, str], list[dict]] | None = None,
 ) -> list[NewsRecord]:
-    """Fetch at most ``MAX_RECORDS_PER_TICKER`` records per ticker.
+    """Fetch at most ``MAX_RECORDS_PER_TICKER`` in-window records per ticker.
 
-    Each record gets a run-unique evidence ID from a fresh :class:`EvidenceRegistry`
-    and complete ``title`` / ``snippet`` / ``source`` / ``date`` / ``pub_date``
-    fields. Records are returned in ticker order, then fetch order.
+    Order of operations (FR-B-1/2): **window date filter -> dedupe -> per-ticker
+    limit**. Out-of-window records (including future-dated ones) are dropped
+    *before* the per-ticker budget is spent, so they can never crowd out
+    legitimate in-window records. Undated records are dropped too, since their
+    window membership cannot be verified. Duplicate articles (same
+    ``title``/``source``/``date``) are collapsed.
+
+    Each surviving record gets a run-unique evidence ID from a fresh
+    :class:`EvidenceRegistry` and complete ``title`` / ``snippet`` / ``source`` /
+    ``date`` / ``pub_date`` fields. Records are returned in ticker order, then
+    fetch order.
     """
     if fetcher is None:
         fetcher = _default_fetcher
 
+    start = _parse_date(window_start)
+    end = _parse_date(window_end)
+
     registry = EvidenceRegistry()
     for ticker in tickers:
         raw_records = fetcher(ticker, window_start, window_end) or []
-        for raw in raw_records[:MAX_RECORDS_PER_TICKER]:
+        kept: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+        for raw in raw_records:
             data = _normalize_article(raw)
+            record_date = _parse_record_date(data["date"])
+            if record_date is None or not (start <= record_date <= end):
+                continue
+            key = (data["title"], data["source"], data["date"])
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append(data)
+            if len(kept) >= MAX_RECORDS_PER_TICKER:
+                break
+        for data in kept:
             registry.issue(
                 ticker=ticker,
                 date=data["date"],
@@ -563,6 +627,70 @@ def _run_id_from_records(records: list[NewsRecord]) -> str | None:
     return None
 
 
+def _evidence_run_id(evidence_id: str) -> str | None:
+    """Return the run id embedded in one evidence ID (``ev-{run_id}-...``)."""
+    if not isinstance(evidence_id, str) or not evidence_id.startswith("ev-"):
+        return None
+    rest = evidence_id[3:]
+    dash = rest.find("-")
+    if dash > 0:
+        return rest[:dash]
+    return None
+
+
+def _validate_merge_input(
+    records: list[NewsRecord],
+    tickers: list[str] | tuple[str, ...],
+    window: tuple[str, str],
+) -> None:
+    """Validate ``merge_once`` inputs and raise ``ValueError`` on violation.
+
+    Enforces the FR-B-1 boundary at the single merge entry point so that neither
+    the injected fetcher nor a direct caller can bypass it:
+
+    * ticker count is 2–3;
+    * the window spans at most 7 days (and ``window_end >= window_start``);
+    * every record's evidence ID belongs to this run (NFR-B-2) and its ticker is
+      one of the input tickers;
+    * at most ``MAX_RECORDS_PER_TICKER`` records per ticker.
+    """
+    if not isinstance(tickers, (list, tuple)):
+        raise TypeError(f"tickers must be a list or tuple, got {type(tickers).__name__}")
+
+    if not (2 <= len(tickers) <= 3):
+        raise ValueError(f"expected 2 or 3 tickers, got {len(tickers)}")
+
+    window_start, window_end = window
+    start = _parse_date(window_start)
+    end = _parse_date(window_end)
+    if end < start:
+        raise ValueError(f"window_end {window_end!r} is before window_start {window_start!r}")
+    span_days = (end - start).days
+    if span_days > 7:
+        raise ValueError(f"window must span at most 7 days, got {span_days} days")
+
+    ticker_set = set(tickers)
+    run_id = _run_id_from_records(records)
+    per_ticker: dict[str, int] = {}
+    for record in records:
+        embedded = _evidence_run_id(record.evidence_id)
+        if embedded is not None and run_id is not None and embedded != run_id:
+            raise ValueError(
+                f"record {record.evidence_id!r} belongs to run {embedded!r}, not {run_id!r}"
+            )
+        if record.ticker not in ticker_set:
+            raise ValueError(
+                f"record {record.evidence_id!r} ticker {record.ticker!r} not in {sorted(ticker_set)}"
+            )
+        per_ticker[record.ticker] = per_ticker.get(record.ticker, 0) + 1
+
+    for ticker, count in per_ticker.items():
+        if count > MAX_RECORDS_PER_TICKER:
+            raise ValueError(
+                f"too many records for {ticker}: {count} > {MAX_RECORDS_PER_TICKER}"
+            )
+
+
 def _build_prompt(
     records: list[NewsRecord],
     tickers: list[str] | tuple[str, ...],
@@ -582,8 +710,39 @@ def _build_prompt(
     return _MERGE_PROMPT_TEMPLATE + "\n\n## Input\n```json\n" + input_json + "\n```\n"
 
 
+def _validate_event_shape(event: dict[str, Any]) -> None:
+    """Validate the *structural* type of one model event; raises ``ValueError``.
+
+    Only type/shape is checked here (so a malformed model output surfaces as an
+    observable parse failure). Semantic checks (evidence ID ownership, metadata
+    match, >=2 tickers, non-empty ``event_id``/``summary``) live in
+    :func:`validate`.
+    """
+    evidence = event.get("evidence")
+    if evidence is not None:
+        if not isinstance(evidence, list):
+            raise ValueError("'evidence' must be a list")
+        for item in evidence:
+            if not isinstance(item, (str, dict)):
+                raise ValueError("each 'evidence' item must be a string or object")
+    ids = event.get("evidence_ids")
+    if ids is not None:
+        if not isinstance(ids, list):
+            raise ValueError("'evidence_ids' must be a list")
+        for evidence_id in ids:
+            if not isinstance(evidence_id, str):
+                raise ValueError("each 'evidence_ids' item must be a string")
+
+
 def _parse_model_output(raw: str) -> list[dict]:
-    """Parse the model's JSON string into a list of suggested events."""
+    """Parse and structurally validate the model's JSON into suggested events.
+
+    Raises ``ValueError`` on a non-string input, invalid JSON, a missing/non-list
+    ``events`` field, or any event/evidence entry of the wrong type (e.g.
+    ``{"events": [null]}`` or ``{"events": [{"evidence_ids": [{}]}]}``). Such a
+    malformed output is an observable parse failure, not a silent "no common
+    event".
+    """
     if not isinstance(raw, str):
         raise ValueError("LLM output must be a JSON string")
     data = json.loads(raw)
@@ -595,35 +754,50 @@ def _parse_model_output(raw: str) -> list[dict]:
         raise ValueError("LLM output must be a JSON array or an object with 'events'")
     if not isinstance(events, list):
         raise ValueError("'events' must be a list")
+    for event in events:
+        if not isinstance(event, dict):
+            raise ValueError("each event in 'events' must be a JSON object")
+        _validate_event_shape(event)
     return events
 
 
-def _fail_closed(registry: EvidenceRegistry, records: list[NewsRecord]) -> MergeResult:
-    """Fail-closed result: no events, every record left unmerged."""
+def _fail_closed(registry: EvidenceRegistry, records: list[NewsRecord], reason: str) -> MergeResult:
+    """Fail-closed result: analysis incomplete, no events, every record unmerged.
+
+    The ``reason`` is preserved so a model exception or an unparseable/malformed
+    output is distinguishable from a normal "no common event" grouping.
+    """
     return MergeResult(
-        status=MergeStatus.NO_COMMON_EVENT,
+        status=MergeStatus.ANALYSIS_INCOMPLETE,
         run_id=registry.run_id,
         events=[],
         unmerged=list(records),
         dropped_invalid=[],
+        failure_reason=reason,
+    )
+
+
+def _placeholder_llm(prompt: str) -> str:
+    """Stand-in LLM that always fails loudly (no network client is wired)."""
+    raise RuntimeError(
+        "Default LLM is not wired to a network client; inject a `llm` callable "
+        "(see merge_once) or wire the upstream TradingAgents LLM client in a "
+        "coordinated integration change before a live run."
     )
 
 
 def _default_llm() -> Callable[[str], str]:
-    """Lazy placeholder LLM — not wired to a network client.
+    """Not wired: the B module has no default live model client yet (FR-B-3 TODO).
 
-    Raises a clear error if invoked without an injected ``llm`` callable, so an
-    offline run fails loudly instead of silently emitting unverified facts.
+    This PR ships the **injectable core only**: ``merge_once`` accepts an
+    injected ``llm`` callable (the offline tests do exactly this) and invokes it
+    exactly once (INV-B-1). Wiring the upstream ``tradingagents.llm_clients``
+    factory as a lazy default is a pending integration TODO owned by the team,
+    not a silent placeholder: it must land as a coordinated change that respects
+    the single-call bound (no hidden SDK retries). Until then this default fails
+    loudly when invoked, so an offline run cannot silently emit unverified facts.
     """
-
-    def _invoke(prompt: str) -> str:
-        raise RuntimeError(
-            "Default LLM is a placeholder and is not wired to a network client; "
-            "inject a `llm` callable (see merge_once) or wire the upstream "
-            "TradingAgents LLM client before a live run."
-        )
-
-    return _invoke
+    return _placeholder_llm
 
 
 def merge_once(
@@ -642,9 +816,12 @@ def merge_once(
     verified fact (INV-B-3 / INV-B-5).
 
     Failure behaviour:
-      - no records                          -> ``data_unavailable`` (no LLM call)
-      - ``llm`` raises / output unparseable -> fail-closed, no verified facts
-      - records but no common event         -> ``no_common_event``
+      - invalid inputs (ticker count, window span, record ownership, per-ticker
+        count)            -> ``ValueError`` (input-level, before any LLM call)
+      - no records          -> ``data_unavailable`` (no LLM call)
+      - ``llm`` raises / output unparseable or malformed
+                            -> ``analysis_incomplete`` (reason preserved, fail-closed)
+      - records but no common event -> ``no_common_event``
 
     Args:
         records: the full, single-batch set of :class:`NewsRecord`.
@@ -656,6 +833,8 @@ def merge_once(
     Returns:
         The authoritative :class:`MergeResult` after deterministic validation.
     """
+    _validate_merge_input(records, tickers, window)
+
     registry = EvidenceRegistry(run_id=_run_id_from_records(records))
     for record in records:
         registry.register(record)
@@ -667,6 +846,7 @@ def merge_once(
             events=[],
             unmerged=[],
             dropped_invalid=[],
+            failure_reason="",
         )
 
     if llm is None:
@@ -676,13 +856,13 @@ def merge_once(
 
     try:
         raw = llm(prompt)
-    except Exception:
-        return _fail_closed(registry, list(records))
+    except Exception as exc:  # noqa: BLE001 - fail closed, preserve the reason
+        return _fail_closed(registry, list(records), f"model call failed: {type(exc).__name__}: {exc}")
 
     try:
         model_events = _parse_model_output(raw)
-    except Exception:
-        return _fail_closed(registry, list(records))
+    except Exception as exc:  # noqa: BLE001 - fail closed, preserve the reason
+        return _fail_closed(registry, list(records), f"model output unparseable: {type(exc).__name__}: {exc}")
 
     return validate(registry, model_events)
 
@@ -695,33 +875,47 @@ _FORGED = "forged_or_cross_run_id"
 _TICKER_MISMATCH = "ticker_mismatch"
 _DATE_MISMATCH = "date_mismatch"
 _SOURCE_MISMATCH = "source_mismatch"
+_MALFORMED_EVENT = "malformed_event"
+_MALFORMED_CLAIM = "malformed_evidence_id"
+_MISSING_EVENT_ID = "missing_event_id"
+_MISSING_SUMMARY = "missing_summary"
 
 
 def _extract_claims(event: dict[str, Any]) -> list[dict[str, Any]]:
     """Normalise a model event into a list of evidence-claim dicts.
 
     Accepts either ``evidence`` (a list of dicts or plain IDs) or the compact
-    ``evidence_ids`` form.
+    ``evidence_ids`` form. Non-list containers and non-dict/non-string items are
+    coerced defensively so the caller can drop them without crashing.
     """
     evidence = event.get("evidence")
     if evidence is not None:
+        if not isinstance(evidence, list):
+            return []
         claims: list[dict[str, Any]] = []
         for item in evidence:
             if isinstance(item, str):
                 claims.append({"evidence_id": item})
-            else:
+            elif isinstance(item, dict):
                 claims.append(dict(item))
+            else:
+                claims.append({"evidence_id": item})
         return claims
-    ids = event.get("evidence_ids", [])
+    ids = event.get("evidence_ids")
+    if not isinstance(ids, list):
+        return []
     return [{"evidence_id": evidence_id} for evidence_id in ids]
 
 
 def _make_drop(claim: dict[str, Any], reason: str) -> DroppedEvidence:
+    evidence_id = claim.get("evidence_id")
+    if not isinstance(evidence_id, str):
+        evidence_id = str(evidence_id)
     return DroppedEvidence(
-        evidence_id=claim.get("evidence_id"),
-        ticker=claim.get("ticker"),
-        date=claim.get("date"),
-        source=claim.get("source"),
+        evidence_id=evidence_id,
+        ticker=claim.get("ticker") if isinstance(claim.get("ticker"), str) else None,
+        date=claim.get("date") if isinstance(claim.get("date"), str) else None,
+        source=claim.get("source") if isinstance(claim.get("source"), str) else None,
         reason=reason,
     )
 
@@ -739,6 +933,10 @@ def validate(
     2. If the model claims ``ticker`` / ``date`` / ``source``, each must equal the
        authoritative record value — otherwise the claim is dropped.
 
+    Each event must also be a JSON object carrying a non-empty ``event_id`` and a
+    non-empty ``summary``; malformed entries are dropped and their records
+    preserved as ``unmerged`` (never emitted with empty fields).
+
     After filtering, every surviving event must still carry at least two distinct
     tickers; otherwise the whole event is degraded to ``unmerged`` (FR-B-5 /
     INV-B-2). Records not attached to any surviving event become ``unmerged``.
@@ -748,12 +946,33 @@ def validate(
     surviving_ids: set[str] = set()
 
     for event in model_events:
-        event_id = event.get("event_id", "")
-        summary = event.get("summary", "")
+        if not isinstance(event, dict):
+            dropped_invalid.append(
+                DroppedEvidence(evidence_id="", ticker=None, date=None, source=None, reason=_MALFORMED_EVENT)
+            )
+            continue
+
+        event_id = event.get("event_id")
+        if not isinstance(event_id, str) or not event_id.strip():
+            dropped_invalid.append(
+                DroppedEvidence(evidence_id="", ticker=None, date=None, source=None, reason=_MISSING_EVENT_ID)
+            )
+            continue
+
+        summary = event.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            dropped_invalid.append(
+                DroppedEvidence(evidence_id="", ticker=None, date=None, source=None, reason=_MISSING_SUMMARY)
+            )
+            continue
 
         valid_items: list[EvidenceItem] = []
         for claim in _extract_claims(event):
             evidence_id = claim.get("evidence_id")
+            if not isinstance(evidence_id, str):
+                dropped_invalid.append(_make_drop(claim, _MALFORMED_CLAIM))
+                continue
+
             record = registry.resolve(evidence_id)
 
             if record is None:

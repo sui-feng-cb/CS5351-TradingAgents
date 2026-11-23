@@ -72,13 +72,13 @@ def _merged_json(aapl, msft, tsla) -> str:
     )
 
 
-def _article(i: int, ticker: str | None = None) -> dict:
+def _article(i: int, ticker: str | None = None, pub_date: str = "2026-11-15") -> dict:
     return {
         "title": f"{ticker or 'T'} headline {i}",
         "summary": f"snippet body {i}",
         "publisher": "Reuters",
         "link": f"https://example.com/{i}",
-        "pub_date": f"2026-11-1{i % 10}T09:00:00+00:00",
+        "pub_date": f"{pub_date}T09:00:00+00:00",
     }
 
 
@@ -206,6 +206,43 @@ def test_fetch_records_normalizes_upstream_shape():
         assert record.date == "2026-11-15"
 
 
+def test_fetch_records_filters_out_of_window_before_limit():
+    """FR-B-1: future/out-of-window records are dropped before the per-ticker limit.
+
+    Reproduces the reported bug: the first 5 records are future-dated
+    (2026-11-23, outside 2026-11-15..2026-11-22) and only the 6th is in-window.
+    Without window-first filtering the future records would occupy the budget
+    and cut the legitimate in-window record.
+    """
+
+    def fetcher(ticker, start, end):
+        records = [_article(i, ticker, pub_date="2026-11-23") for i in range(5)]
+        records.append(_article(5, ticker, pub_date="2026-11-20"))
+        return records
+
+    result = fetch_records(["AAPL", "MSFT"], "2026-11-15", "2026-11-22", fetcher=fetcher)
+    assert {r.date for r in result} == {"2026-11-20"}
+    assert all(r.date != "2026-11-23" for r in result)
+    assert [r.ticker for r in result] == ["AAPL", "MSFT"]
+
+
+def test_fetch_records_deduplicates_identical_articles():
+    """FR-B-2: identical (title, source, date) articles are collapsed."""
+
+    def fetcher(ticker, start, end):
+        return [
+            _article(0, ticker, pub_date="2026-11-16"),
+            _article(0, ticker, pub_date="2026-11-16"),
+            _article(1, ticker, pub_date="2026-11-17"),
+        ]
+
+    result = fetch_records(["AAPL", "MSFT"], "2026-11-15", "2026-11-22", fetcher=fetcher)
+    aapl = [r for r in result if r.ticker == "AAPL"]
+    assert len(aapl) == 2
+    titles = {r.title for r in aapl}
+    assert titles == {"AAPL headline 0", "AAPL headline 1"}
+
+
 # ---------------------------------------------------------------------------
 # EvidenceRegistry (FR-B-2 / NFR-B-1/2 / INV-B-3)
 # ---------------------------------------------------------------------------
@@ -310,28 +347,79 @@ def test_merge_once_legal_merge_accepted(records):
 
 
 def test_merge_once_llm_raises_fail_closed(records):
-    """RP-B: an LLM exception fails closed — no verified facts emitted."""
+    """RP-B: an LLM exception fails closed as analysis_incomplete, reason preserved."""
     records_list, aapl, msft, tsla = records
 
     def llm(prompt):
         raise RuntimeError("model unavailable")
 
     result = merge_once(records_list, TICKERS, WINDOW, llm=llm)
-    assert result.status is MergeStatus.NO_COMMON_EVENT
+    assert result.status is MergeStatus.ANALYSIS_INCOMPLETE
     assert result.events == []
     assert {r.evidence_id for r in result.unmerged} == {r.evidence_id for r in records_list}
+    assert "model unavailable" in result.failure_reason
 
 
 def test_merge_once_json_parse_failure_fail_closed(records):
-    """RP-B: unparseable output fails closed — no events emitted."""
+    """RP-B: unparseable output fails closed as analysis_incomplete, reason preserved."""
     records_list, aapl, msft, tsla = records
 
     def llm(prompt):
         return "not json at all"
 
     result = merge_once(records_list, TICKERS, WINDOW, llm=llm)
-    assert result.status is MergeStatus.NO_COMMON_EVENT
+    assert result.status is MergeStatus.ANALYSIS_INCOMPLETE
     assert result.events == []
+    assert result.failure_reason
+
+
+def test_merge_once_null_event_fails_closed_as_analysis_incomplete(records):
+    """RP-B: a null event entry is a malformed output -> analysis_incomplete."""
+    records_list, aapl, msft, tsla = records
+
+    def llm(prompt):
+        return json.dumps({"events": [None]})
+
+    result = merge_once(records_list, TICKERS, WINDOW, llm=llm)
+    assert result.status is MergeStatus.ANALYSIS_INCOMPLETE
+    assert result.events == []
+    assert {r.evidence_id for r in result.unmerged} == {r.evidence_id for r in records_list}
+    assert result.failure_reason
+
+
+def test_merge_once_malformed_evidence_ids_fail_closed_as_analysis_incomplete(records):
+    """RP-B: a non-string evidence id is a malformed output -> analysis_incomplete."""
+    records_list, aapl, msft, tsla = records
+
+    def llm(prompt):
+        return json.dumps({"events": [{"event_id": "e1", "summary": "x", "evidence_ids": [{}]}]})
+
+    result = merge_once(records_list, TICKERS, WINDOW, llm=llm)
+    assert result.status is MergeStatus.ANALYSIS_INCOMPLETE
+    assert result.events == []
+    assert result.failure_reason
+
+
+def test_merge_once_missing_event_id_and_summary_not_published(records):
+    """FR-B-4: an event missing event_id/summary is never emitted with empty fields."""
+    records_list, aapl, msft, tsla = records
+
+    def llm(prompt):
+        return json.dumps(
+            {
+                "events": [{"evidence_ids": [aapl.evidence_id, msft.evidence_id]}],
+                "unmerged_evidence_ids": [tsla.evidence_id],
+            }
+        )
+
+    result = merge_once(records_list, TICKERS, WINDOW, llm=llm)
+    assert result.events == []
+    assert {r.evidence_id for r in result.unmerged} == {
+        aapl.evidence_id,
+        msft.evidence_id,
+        tsla.evidence_id,
+    }
+    assert result.status is MergeStatus.NO_COMMON_EVENT
 
 
 def test_merge_once_no_records_data_unavailable():
@@ -438,6 +526,72 @@ def test_inv_b4_insufficient_evidence_not_forced(records):
     assert result.events == []
     unmerged_ids = {r.evidence_id for r in result.unmerged}
     assert unmerged_ids == {aapl.evidence_id, msft.evidence_id, tsla.evidence_id}
+
+
+# ---------------------------------------------------------------------------
+# merge_once input validation (FR-B-1 boundary enforced at the entry point)
+# ---------------------------------------------------------------------------
+
+
+def test_merge_once_rejects_four_tickers(records):
+    """FR-B-1: more than 3 tickers is rejected before any LLM call."""
+    records_list, aapl, msft, tsla = records
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once(records_list, ["AAPL", "MSFT", "TSLA", "NVDA"], WINDOW, llm=llm)
+
+
+def test_merge_once_rejects_window_longer_than_seven_days(records):
+    """FR-B-1: a window spanning more than 7 days is rejected."""
+    records_list, aapl, msft, tsla = records
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once(records_list, TICKERS, ("2026-11-01", "2026-11-22"), llm=llm)
+
+
+def test_merge_once_rejects_cross_run_record(records):
+    """NFR-B-2: a record whose evidence ID belongs to another run is rejected."""
+    records_list, aapl, msft, tsla = records
+    other = EvidenceRegistry(run_id="otherrun")
+    foreign = other.issue("AAPL", "2026-11-15", "Reuters", "foreign run record")
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once([aapl, msft, tsla, foreign], TICKERS, WINDOW, llm=llm)
+
+
+def test_merge_once_rejects_record_ticker_not_in_input(records):
+    """FR-B-1: a record whose ticker is not among the input tickers is rejected."""
+    records_list, aapl, msft, tsla = records
+    registry = EvidenceRegistry(run_id="run123")
+    nvda = registry.issue("NVDA", "2026-11-17", "CNBC", "Nvidia record")
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once([aapl, msft, tsla, nvda], TICKERS, WINDOW, llm=llm)
+
+
+def test_merge_once_rejects_more_than_five_records_per_ticker(records):
+    """FR-B-1: more than 5 records for one ticker is rejected."""
+    records_list, aapl, msft, tsla = records
+    registry = EvidenceRegistry(run_id="run123")
+    extra = [registry.issue("AAPL", "2026-11-15", "Reuters", f"extra {i}") for i in range(5)]
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once([aapl, msft, tsla, *extra], TICKERS, WINDOW, llm=llm)
 
 
 # ---------------------------------------------------------------------------
@@ -727,3 +881,67 @@ def test_inv_b5_wrong_claim_rejected_not_adopted(reg):
     for event in result.events:
         for item in event.evidence:
             assert item.ticker == registry.resolve(item.evidence_id).ticker
+
+
+def test_validate_missing_event_id_not_published(reg):
+    """FR-B-4: an event with no event_id is degraded, never emitted with empty fields."""
+    registry, aapl, msft, tsla = reg
+    model = [
+        {
+            "summary": "no event id",
+            "evidence_ids": [aapl.evidence_id, msft.evidence_id],
+        }
+    ]
+    result = validate(registry, model)
+    assert result.events == []
+    assert {r.evidence_id for r in result.unmerged} == {
+        aapl.evidence_id,
+        msft.evidence_id,
+        tsla.evidence_id,
+    }
+    assert any(d.reason == "missing_event_id" for d in result.dropped_invalid)
+
+
+def test_validate_missing_summary_not_published(reg):
+    """FR-B-4: an event with no summary is degraded, never emitted with empty fields."""
+    registry, aapl, msft, tsla = reg
+    model = [
+        {
+            "event_id": "e1",
+            "evidence_ids": [aapl.evidence_id, msft.evidence_id],
+        }
+    ]
+    result = validate(registry, model)
+    assert result.events == []
+    assert {r.evidence_id for r in result.unmerged} == {
+        aapl.evidence_id,
+        msft.evidence_id,
+        tsla.evidence_id,
+    }
+    assert any(d.reason == "missing_summary" for d in result.dropped_invalid)
+
+
+def test_validate_malformed_evidence_id_dropped_not_crash(reg):
+    """FR-B-7: a non-string evidence id is dropped; valid ids still merge, no crash."""
+    registry, aapl, msft, tsla = reg
+    model = [
+        {
+            "event_id": "e1",
+            "summary": "malformed evidence id mixed with valid ids",
+            "evidence_ids": [aapl.evidence_id, msft.evidence_id, {}],
+        }
+    ]
+    result = validate(registry, model)
+    assert len(result.events) == 1
+    event = result.events[0]
+    assert {e.evidence_id for e in event.evidence} == {aapl.evidence_id, msft.evidence_id}
+    assert any(d.reason == "malformed_evidence_id" for d in result.dropped_invalid)
+
+
+def test_validate_non_dict_event_skipped_without_crash(reg):
+    """RP-B: a non-object event entry is dropped observably instead of crashing."""
+    registry, aapl, msft, tsla = reg
+    model = [None]
+    result = validate(registry, model)
+    assert result.events == []
+    assert any(d.reason == "malformed_event" for d in result.dropped_invalid)
