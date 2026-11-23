@@ -1,5 +1,75 @@
 schema_version: 1
 entries:
+  - id: REVIEW-PR6-005
+    scope: fifth-review-of-b-events-direct-entry-date-window-fix
+    agent: OpenCode
+    requirements: [FR-B, NFR-B, INV-B, INV-ASOF, BASE-01, GOV-01]
+    user_direction: "pr#6已按要求更新，再次审查，不再做额外的要求和发现，给出本轮review意见，并申请通过，不要为我在github上直接发布comment，用markdown输出到对话框"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 6
+    base_sha: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+    previous_review_head: 4a9afc4fc017ef9dbbd720ff86541491c06a99fd
+    head_sha: 771cf1a00c622fe05e98166dfba80909eab1e0e1
+    files: [docs/review-memo.md, docs/verification/pr6-review-005.md, docs/ai-use-log.yaml, .opencode/skills/pr6-branch-sync-review/SKILL.md]
+    validation: docs/verification/pr6-review-005.md
+    feature_status: "APPROVE for B scope. The sole prior finding, direct merge_once acceptance of records outside the supplied date window, is fixed with future/stale/missing-date negatives."
+    verification: "Python 3.13.18: B suite 56 passed; Ruff, governance-script mypy, pip check and PR diff check passed. Direct boundary probe rejects future/past/missing/malformed dates and accepts inclusive window boundaries. Remote B suite passed. Full test failures are 29 C manifest/CLI cases; safety review fails at shared semantic governance gate."
+    github_publication: "No GitHub review/comment submitted, per user instruction. Markdown review delivered in conversation. No merge."
+    workspace_handling: "Reviewed detached PR head and restored original main at ed6a8c9; existing local PR7 edits restored and preserved. No application/test edits or commits."
+    transcript_status: "Active-session TUI /export unavailable through tools; human export and cross-link pending. No transcript synthesized."
+  - id: REVIEW-PR8-001
+    scope: review-of-a-pr7-follow-up-fixes
+    agent: OpenCode
+    requirements: [FR-A, NFR-A, INV-A, SEC-01, GOV-01]
+    user_direction: "现在在main分支，A已经提交了pr #8，主要是对pr#7问题的修改。给出本轮review意见，不要直接替我回复。把review结论写在docs/review-memo.md，在对话框中输出可复制的markdown文本"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 8
+    base_sha: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+    head_sha: 094e2a700f56144551261bfcabc5e15bff3efcac
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr7-comparison-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "CHANGES REQUIRED. Fixed exception disclosure, state identity rejection and multiline summary confirmed. Remaining P1: resolved symlink report path can cross tickers or resolve to notes.md. Remaining P2: non-USD crypto still enters stock pipeline."
+    verification: "Python 3.13.18 at reviewed head: 38 A tests passed; full suite 1570 passed, 29 existing C-only failures, 1 skipped, 1 deselected, 100 subtests passed. Independent temporary probes: 5 failed, 6 passed. Governance with base, full Ruff, governance-script mypy, pip check and PR diff check passed. Both CI test jobs match local C-only failures. No live analysis/model call."
+    workspace_handling: "Primary checkout kept on main at ed6a8c9; reviewed pinned head in /tmp/opencode/pr8-review-094e2a7 with PYTHONPATH=src:. No application or formal test edits."
+    publication_direction: "Local memo and copyable Markdown only as requested; no GitHub comment/review, commit, push or merge."
+    transcript_status: "Active-session TUI /export unavailable through tools; human export to transcripts/raw and actual cross-link pending. User direction and execution boundary recorded in the memo; no transcript synthesized."
+  - id: REVIEW-PR6-004
+    scope: fourth-review-of-b-events-simplified-acceptance
+    agent: OpenCode
+    requirements: [FR-B, NFR-B, INV-B, INV-ASOF, BASE-01, GOV-01]
+    user_direction: "pr#6已按要求更新，再次审查，给出本轮review意见，并申请通过"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 6
+    base_sha: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+    previous_review_head: 26bd176d5d6264c356a9cd48fd5de3784c8b8c38
+    head_sha: 4a9afc4fc017ef9dbbd720ff86541491c06a99fd
+    files: [docs/review-memo.md, docs/verification/pr6-review-004.md, docs/ai-use-log.yaml, .opencode/skills/pr6-branch-sync-review/SKILL.md]
+    validation: docs/verification/pr6-review-004.md
+    feature_status: "CHANGES REQUIRED. Simplified acceptance criteria are largely satisfied, but direct merge_once still publishes future- and past-dated records outside the declared window."
+    verification: "Python 3.13.18: B tests 53 passed; full suite 1615 passed, 29 C-only failures, 1 skipped, 2 deselected, 100 subtests. Ruff, governance-script mypy, pip check and diff check passed. Governance --base stops at shared semantic gate. Remote B job 53 passed; full CI failures all C manifest/CLI. No live model call."
+    github_review: "CHANGES_REQUESTED submitted for head 4a9afc4fc017ef9dbbd720ff86541491c06a99fd at https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6#pullrequestreview-6022342508"
+    publication_direction: "Approval requested; one reproducible direct-entry date-window bypass remains, so submitted CHANGES_REQUESTED. No merge."
+    workspace_handling: "Reviewed PR head in detached state in the project worktree and restored original main at 5c50d84; no application/test changes or commits made."
+    transcript_status: "Active-session TUI /export unavailable through tools; human export and cross-link pending. No transcript synthesized."
+  - id: REVIEW-PR6-003
+    scope: third-review-of-b-events-after-ci-and-import-fixes
+    agent: OpenCode
+    requirements: [FR-B, NFR-B, INV-B, INV-ASOF, BASE-01, GOV-01, QUA-01]
+    user_direction: "pr#6已按要求更新，再次审查，关于B的comment中第7条，团队已批准固定语义评估集，已测试通过并且CI失败也不是B的问题，给出本轮review意见，并申请通过"
+    human_confirmation: "User confirms team approval of the fixed semantic evaluation set and passing evaluation; accepted as human confirmation, not a fresh independent live-model measurement. Existing C failures and shared semantic-governance wiring are not assigned to B."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 6
+    base_sha: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+    previous_head_sha: 1f57b394e50dd23ad75e682ad1aee29e53e7ec28
+    head_sha: 26bd176d5d6264c356a9cd48fd5de3784c8b8c38
+    files: [docs/review-memo.md, docs/verification/pr6-review-003.md, docs/ai-use-log.yaml, .opencode/skills/pr6-branch-sync-review/SKILL.md]
+    validation: docs/verification/pr6-review-003.md
+    feature_status: "CHANGES REQUIRED. CI scope and Ruff fixed, but production module and B offline tests have unchanged blobs. Independent current-head probes still reproduce date/cap bypasses, malformed output crashes/empty fields, failure-state conflation and placeholder default adapters."
+    verification: "Python 3.13.18 at reviewed head: 1601 passed, 29 C-only failures, 1 skipped, 2 deselected, 100 subtests passed; Ruff, governance-script mypy, pip check and PR diff check passed. Governance with base fails shared semantic gate. Remote B job: 39 passed; full CI matches local. No live-model request."
+    workspace_handling: "External worktree reads/execution were denied and not retried there. Reviewed detached head in the permitted project workspace, then restored original main at 5c50d84. Disposable registered /tmp/opencode/pr6-rereview-26bd176 remains. No application/test edits, commit, push or merge."
+    github_review: "CHANGES_REQUESTED submitted at 2026-11-23T12:15:02Z for head 26bd176d5d6264c356a9cd48fd5de3784c8b8c38: https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6#pullrequestreview-6021522094"
+    publication_direction: "User requested review and approval. Review was submitted as CHANGES_REQUESTED because current-head behavior still reproduces independent P1/P2 findings; an approval vote would contradict the evidence. No merge."
+    transcript_status: "Active-session TUI /export unavailable through tools; human export under transcripts/raw and actual cross-link pending. No transcript synthesized."
   - id: A-COMPARE-001
     scope: same-day-two-ticker-comparison-fr-a-nfr-a
     agent: OpenCode
@@ -26,6 +96,54 @@ entries:
     human_annotations: transcripts/12345678-A.md
     validation: "Local isolated comparison suite: 30 passed via PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline; py_compile passed; ruff 0.17.6 full-repo check passed; scripts/check_governance.py passed; git diff --check passed. Full conftest collection and Python 3.13 CI are pending; local venv lacks yfinance. comparison.py is outside CI mypy coverage."
     feature_status: "Implemented locally through batches 6a-6d; 30 comparison tests pass in isolated local run; draft PR #7 opened; independent review pending."
+  - id: REVIEW-PR7-001
+    scope: review-of-a-dual-ticker-comparison-after-merge
+    agent: OpenCode
+    requirements: [FR-A, NFR-A, INV-A, SEC-01, GOV-01]
+    user_direction: "审查 A 的 PR #7，暂缓评估自行合并，将结论写入 docs/review-memo.md 并提供可复制 Markdown。"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 7
+    base_sha: 41e1b0b5f0717d349dab5a688634a32a388b7466
+    head_sha: ea49ffba50c43ea2def802bec21a70fac6f2c38a
+    merge_sha: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr7-comparison-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "CHANGES REQUIRED. Synthetic offline probes reproduced exception disclosure, mismatched state and report references, and truncated multiline summaries. The current tests pin stock routing for BTC-USD."
+    verification: "Python 3.13.18 at PR head: 1562 passed, 29 existing C failures, 1 skipped, 1 deselected, 100 subtests passed. Focused A suite: 30 passed. Both CI test logs match the full local result. Governance with base, Ruff, governance-script mypy, pip check and PR diff check passed."
+    transcript_status: "Active-session TUI /export unavailable through tools. Human export under transcripts/raw and cross-link pending."
+  - id: REVIEW-PR6-002
+    scope: re-review-of-pr6-synchronized-b-events-implementation
+    agent: OpenCode
+    requirements: [FR-B, NFR-B, INV-B, INV-ASOF, BASE-01, GOV-01, QUA-01]
+    user_direction: "pr#6已按要求更新，再次审查"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 6
+    base_sha: 41e1b0b5f0717d349dab5a688634a32a388b7466
+    previous_head_sha: 9a50f83f97afa8f4fb4607e5372c035c2f50f5e2
+    head_sha: 1f57b394e50dd23ad75e682ad1aee29e53e7ec28
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr6-branch-sync-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "CHANGES REQUIRED; main merge/shared-file cleanup/package path/Python version corrected. Blockers remain in default adapters, input date/cap enforcement and production semantic evaluation; additional schema, failure-status and lint findings reproduced."
+    verification: "Python 3.13.18 at reviewed head: full suite 1571 passed, 29 existing C failures, 1 skipped, 2 deselected, 100 subtests; B tests 39 passed. Seven temporary independent probes failed as expected; an added future-evidence probe separately failed. Ruff I001 and semantic --base governance failed; mypy/pip check/PR diff check passed. CI test and B jobs report only C failures; safety job fails semantic-governance step."
+    evidence_boundary: "Model evaluation was exercised only with offline stubs: 1 successful pair plus 23 failures incorrectly passes the gate at precision=recall=1. No real model/data request or approval claimed."
+    publication_direction: "Fetched and reviewed detached head, then returned to main and restored pre-existing review notes from a scoped stash; no production/test changes retained, commit, push, GitHub review or merge."
+    transcript_status: "Active-session TUI /export unavailable through tools; human export under transcripts/raw and cross-link pending. No transcript synthesized."
+  - id: REVIEW-PR6-001
+    scope: b-branch-main-synchronization-permission-and-resubmission-review
+    agent: OpenCode
+    requirements: [FR-B, NFR-B, INV-B, BASE-01, GOV-01, QUA-01]
+    user_direction: "在 main 审查 PR #6，要求 B 本地先 merge main、自查权限拒绝的文件、核对提交后重新申请 review；结论写入 docs/review-memo.md 并输出可复制 Markdown。"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 6
+    base_sha: 41e1b0b5f0717d349dab5a688634a32a388b7466
+    head_sha: 9a50f83f97afa8f4fb4607e5372c035c2f50f5e2
+    merge_base_sha: 9fa1196fffbcfd9de5146d2dd2869df84ab99838
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr6-branch-sync-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "CHANGES REQUIRED; B is 8 commits behind main and 1 ahead, GitHub CONFLICTING/DIRTY; reconcile shared governance files, permissions, package path and validation before re-requesting review. B local denial logs and B test/model claims were not independently reproduced."
+    verification: "Python 3.13.18 on main: full default offline suite 1532 passed, 29 C-only expected acceptance failures, 1 skipped, 1 deselected, 100 subtests passed; governance, Ruff, mypy and pip check passed. GitHub reviews/statusCheckRollup empty."
+    publication_direction: "Local review/session artifacts only; no checkout, merge, application edit, commit, push, remote review or merge performed."
+    transcript_status: "Active-session TUI /export unavailable through the tool interface; human export under transcripts/raw and cross-link pending. No transcript synthesized."
   - id: GOV-SAME-PR-OPTIONAL-001
     scope: make-same-pr-test-review-advisory-and-preserve-safety-review-gate
     agent: OpenCode
