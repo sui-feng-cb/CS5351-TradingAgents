@@ -5,13 +5,13 @@ entries:
     agent: OpenCode
     requirements: [FR-A, NFR-A, INV-A, SEC-01, GOV-01]
     repository: sui-feng-cb/CS5351-TradingAgents
-    pull_request: pending-draft
+    pull_request: 8
     base_head: c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
     reviewed_head: ea49ffba50c43ea2def802bec21a70fac6f2c38a
     review_verdict: CHANGES REQUIRED
     user_direction: "Member A approved the P1/P2 fix batches and stock-only asset scope after the PR #7 review."
     human_approval: "Member A approved the P1 test intent and reviewed batches 2-4; D remains contract approver/acceptance owner. Independent non-author re-review of the fixes is pending."
-    publication_direction: "No commit or push for the fix branch yet; new draft PR pending. No main-branch push."
+    publication_direction: "Committed and pushed to feature/A-comparison-review-fixes; draft PR #8 opened against main. No merge; independent review pending. No main-branch push."
     files:
       - src/tradingagents/enhancements/comparison.py
       - test/offline/test_comparison.py
@@ -24,7 +24,7 @@ entries:
     transcript_status: "Active fix session; full TUI /export remains pending. Prior A transcript is retained at transcripts/12345678-A.md."
     human_annotations: transcripts/12345678-A.md
     validation: "38 comparison tests pass via PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline; py_compile, Ruff, governance and git diff --check pass. Full conftest/CI remains pending; the baseline CI has 29 expected C manifest/CLI failures. comparison.py is outside CI mypy coverage."
-    feature_status: "P1 exception sanitization, identity/report-attribution checks, multi-line summary and stock-only scope implemented on feature/A-comparison-review-fixes; draft-0.4 docs updated; independent re-review pending; no commit/push."
+    feature_status: "P1 exception sanitization, identity/report-attribution checks, multi-line summary and stock-only scope implemented on feature/A-comparison-review-fixes; draft-0.4 docs updated; draft PR #8 opened; independent re-review pending; no merge."
   - id: A-COMPARE-001
     scope: same-day-two-ticker-comparison-fr-a-nfr-a
     agent: OpenCode
