@@ -1,5 +1,23 @@
 schema_version: 1
 entries:
+  - id: REVIEW-PR9-002
+    scope: c-report-save-failure-v1-semantics-re-review
+    agent: OpenCode
+    requirements: [FR-C, SEC-01, INV-SECRET, GOV-01, BASE-01]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 9
+    base_sha: 6ad32855d84cb9e77f03ee9e1cf3661a916572db
+    previous_review_head: ac2c5ca33d7298669f434a23b9bdf608a4c5a1c0
+    head_sha: 2a245507a77839823f9e380335f45214d0d7544d
+    user_direction: "pr#9已按要求更新，再次审查，不再做额外的要求和发现，给出本轮review意见，并申请通过，不要为我在github上直接发布comment，用markdown输出到对话框"
+    human_confirmation: "User explicitly agreed to unchanged v1 fields: status denotes the analysis result; a post-success save failure records report_save_failed / Report save failed. in error, query warns and retains the match."
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr5-manifest-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "APPROVE. Sole prior P2 fixed under approved v1 semantics; save failure differs from skipped save, fixed safe error persists, query warning retains the record. No expanded review requirements."
+    verification: "Python 3.13.18: C suite 50 passed; targeted cases 5 passed/45 deselected; full suite 1678 passed, 1 skipped, 2 deselected, 24 warnings, 100 subtests. Governance with current base, full Ruff, governance-script mypy, pip check, PR diff check excluding raw exports and fix-commit diff check pass. Both latest CI runs on pinned head succeed and every displayed check passes."
+    workspace_handling: "Clean main temporarily detached to reviewed head for verification; restored main at 6ad32855d84cb9e77f03ee9e1cf3661a916572db. No application/test edits retained."
+    publication_direction: "Local memo and copyable Markdown only; no GitHub comment/review/approval, commit, push or merge performed."
+    transcript_status: "Active-session TUI /export unavailable through tools; human export to transcripts/raw and actual cross-link pending. No transcript synthesized."
   - id: A-COMPARE-FIX-002
     scope: pr8-re-review-symlink-and-non-usd-crypto-fixes
     agent: OpenCode

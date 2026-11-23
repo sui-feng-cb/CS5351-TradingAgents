@@ -5,6 +5,40 @@ description: Reusable evidence and findings from the PR #5 C manifest/query test
 
 # PR #5 C manifest/query review
 
+## PR #9 fix re-review — `2a24550` (2026-11-24)
+
+PR `sui-feng-cb/CS5351-TradingAgents#9`, base
+`6ad32855d84cb9e77f03ee9e1cf3661a916572db`, reviewed head
+`2a245507a77839823f9e380335f45214d0d7544d`, previous head `ac2c5ca`.
+The user limited this round to the prior save-failure finding and explicitly
+approved unchanged v1 structure: status denotes analysis outcome, while an
+otherwise successful analysis may carry error `report_save_failed` /
+`Report save failed.`. A skipped save has null error. Query warns and retains
+the match. References: FR-C, SEC-01/INV-SECRET, ADR-001/003, C v1 contract.
+
+Decision: **APPROVE**. Internal save_failed bookkeeping is excluded from the
+public reports mapping. Fixed error serialization, skipped-save control,
+query match retention/warning and display-after-failure pass; interface and
+schema descriptions reflect the confirmed semantics. Reuse these checks when
+reviewing lifecycle bookkeeping: analysis outcome and post-analysis I/O outcome
+must remain independently observable without leaking exception text.
+
+Actual Python 3.13.18 verification:
+
+- C suite: 50 passed; targeted save/query cases: 5 passed, 45 deselected.
+- Full default offline suite: 1678 passed, 1 skipped, 2 deselected,
+  24 warnings, 100 subtests passed.
+- Governance with current PR base, full Ruff, governance-script mypy, pip check,
+  PR whitespace check excluding raw transcripts and fix-commit diff check pass.
+- Latest PR/push CI runs 45218398337 / 45218380901 succeed on reviewed head;
+  all displayed checks pass, including safety review. PR is MERGEABLE.
+
+Main was temporarily detached for verification and restored to `6ad3285`.
+Only review memo, AI-use log (REVIEW-PR9-002) and this skill changed; no new
+application/tests, remote comment/review, commit, push or merge. Full active
+TUI /export remains a human action; no export is invented. Detailed commands
+and results are in `docs/review-memo.md`.
+
 ## Re-review at `677e9f396e9ae3498d218a42d1a49f1e8270af48`
 
 The corrections resolve the prior review findings: path traversal now uses a

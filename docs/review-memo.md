@@ -1096,6 +1096,50 @@ git diff --quiet c75bd98 HEAD -- test/offline/test_manifest.py
 
 **APPROVE。** 上轮两个未解决项均已修复并通过原独立负例，新增正式回归与完整回归结果支持本轮代码通过。建议通过 PR #8 当前 head 的代码审查。按委托，两个文档冲突暂不纳入本轮判断；此结论限于上述提交代码，不表示当前冲突已解决、完整 CI 已全绿、D 的契约确认已完成或 GitHub 已获批准。未执行提交、推送或合并。
 
+## PR #9 · C 保存失败记录修复复审 · 2026-11-24
+
+- **仓库 / PR：** [sui-feng-cb/CS5351-TradingAgents #9](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/9)
+- **审查人：** OpenCode，按用户要求进行本地复审。
+- **Base：** `6ad32855d84cb9e77f03ee9e1cf3661a916572db`；上轮 head：`ac2c5ca33d7298669f434a23b9bdf608a4c5a1c0`。
+- **Reviewed head：** `2a245507a77839823f9e380335f45214d0d7544d`；重点核对该修复提交的 9 文件差异及 `f8722e0` 同步后的状态。
+- **范围：** 仅复核上轮 P2“保存失败与主动跳过写出相同清单”，依据 FR-C、SEC-01 / INV-SECRET、ADR-001/003 和 C v1 契约；按本轮指令不扩大审查或新增要求。
+- **人工确认：** 用户在本次对话中明确同意保留 v1 字段结构：`status` 表达分析结果，分析成功但报告保存失败时仍为 `succeeded`，通过已有 `error` 写入固定的 `report_save_failed` / `Report save failed.`；查询保留匹配记录并给出 warning。
+
+### 上轮发现复验
+
+1. **保存失败已与主动跳过区分。** `_offer_reports` 返回内部 `save_failed` 标记，调用方将其转换为已有 `error` 字段；该标记不进入公开 manifest。分析成功、保存异常时记录 `status="succeeded"`、固定错误码和文案以及 null 报告路径；主动跳过保存时保持 `error=null`。
+   [运行记录](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/2a245507a77839823f9e380335f45214d0d7544d/src/cli/run.py#L514-L532)
+2. **查询保留记录并提示失败。** `_load_one` 识别 `report_save_failed` 后追加固定 warning，仍返回匹配记录；真实 Typer JSON 查询回归同时验证保存失败提示和跳过保存无此提示。
+   [查询处理](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/2a245507a77839823f9e380335f45214d0d7544d/src/tradingagents/enhancements/manifest.py#L375-L390)
+3. **错误安全性与既有行为通过。** 保存异常使用固定终端提示，不保存异常原文；测试断言 manifest 和查询输出不含合成敏感标记、异常类型或 traceback，并验证保存失败后仍显示报告。正常保存的实际相对路径、主动跳过、分析异常及原有 C 回归均通过。
+4. **契约与 schema 已同步。** v1 顶层字段与查询 JSON 结构保持原样；接口契约、schema 描述、测试计划、追踪和验证记录已更新到用户确认的 status/error 语义。
+
+### 验证证据
+
+在固定 head 使用项目 Python **3.13.18** 执行：
+
+```bash
+TZ=America/New_York .venv/bin/python -m pytest -q test/offline/test_manifest.py --tb=short --disable-warnings
+TZ=America/New_York .venv/bin/python -m pytest -q test/offline/test_manifest.py -k 'report_save_failure or skipped_save_control or save_then_show or saved_report_path' --tb=short --disable-warnings
+TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
+.venv/bin/python scripts/check_governance.py --base 6ad32855d84cb9e77f03ee9e1cf3661a916572db
+.venv/bin/python -m ruff check .
+.venv/bin/python -m mypy scripts/check_governance.py
+.venv/bin/python -m pip check
+git diff --check 6ad3285...HEAD -- . ':!transcripts/raw'
+git diff --check 2a245507^ 2a245507
+```
+
+- **C 专项：50 passed；本轮定向回归：5 passed、45 deselected。** 新增三项测试覆盖保存失败、主动跳过及真实 CLI 查询告警，预期值使用固定字面量。
+- **完整默认离线套件：1678 passed、1 skipped、2 deselected、24 warnings、100 subtests passed。** 治理、全仓 Ruff、治理脚本 mypy、依赖一致性和上述差异空白检查均通过；mypy 命令只覆盖治理脚本。
+- 只读查询 `gh run view ... --json headSha,event,conclusion` 确认 [PR CI 45218398337](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45218398337) 与 [push CI 45218380901](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45218380901) 均属于本轮 head 且为 SUCCESS。`gh pr checks 9 -R sui-feng-cb/CS5351-TradingAgents` 显示测试、B 专项、治理、Ruff、clean-install smoke 和 safety review 全部通过。
+- 最新 PR 状态为 `MERGEABLE`，GitHub 已提交 reviews 仍为空。本轮仅本地记录批准建议，未向 GitHub 发布 comment/review，未提交、推送或合并。
+- 主工作区从干净的 main 临时 detach 至审查 head，验证后已恢复原 `main` / `6ad32855d84cb9e77f03ee9e1cf3661a916572db`。未编辑应用代码或正式测试。会话按 `session-artifacts` 工作流记录；完整 TUI `/export` 无工具入口，待人工导出至 `transcripts/raw/` 后补实际链接，未合成 transcript。
+
+### 结论
+
+**APPROVE。** 上轮唯一未解决项已按用户确认的 v1 语义修复，保存失败与主动跳过可明确区分，查询告警及记录保留行为符合约定，专项、完整回归和最新 head CI 全部通过。建议通过 PR #9 当前 head 的代码审查。本轮不增加其他要求；该结论是本地复审意见。
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:
