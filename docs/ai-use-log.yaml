@@ -499,3 +499,16 @@ entries:
     validation: "test/offline/test_events.py 56 passed；ruff check . 通过。"
     feature_status: "merge_once 统一入口已校验记录日期窗口，未来/过期/缺失/畸形日期均拒绝；新增 3 个负例。"
     transcript_status: "active-session TUI export pending"
+  - id: C-MANIFEST-PR9-FIX-001
+    scope: fr-c-report-save-failure-distinction
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01]
+    user_direction: "组长反馈 PR #9：报告保存失败与主动跳过不可区分；确认复用 v1 error 字段与现有 query warnings 修复。"
+    human_approval: "C 负责人授权修复与本地验证；提交和推送留给用户；实现 PR 独立评审待完成。"
+    branch: c-manifest-implementation
+    files: [src/cli/run.py, src/tradingagents/enhancements/manifest.py, test/offline/test_manifest.py, docs/architecture/interface-contracts.md, docs/architecture/run-manifest-v1.schema.json, docs/architecture/trace-matrix.md, docs/testing/c-manifest-test-plan.md, docs/verification/c-manifest.md, docs/ai-use-log.yaml]
+    decision_log: "_offer_reports 返回含 save_failed 的结果（跳过仍 None）；成功后保存失败保留 status=succeeded、报告路径 null，error=report_save_failed/Report save failed.；查询识别该码输出固定 warning 并保留记录。"
+    validation: docs/verification/c-manifest.md
+    test_result: "原红测 test_manifest.py:815 转绿；定向 5 passed，相关三文件 116 passed；全量离线 1678 passed, 1 skipped, 2 deselected, 100 subtests。"
+    validation_checks: "ruff check . pass; check_governance.py pass; git diff --check clean."
+    transcript_status: "No active-session export bound for this fix yet; to bind on user export."

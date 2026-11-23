@@ -182,3 +182,59 @@ The C module, `manifest query` and run-recording remain green; the C suite is
 unchanged at 47 cases. The implementation PR's independent review and formal
 NFR-C acceptance (fixed CI runner, three-process method, ≤2.0 s threshold) are
 still pending; the reused-custom-report-directory policy is still to confirm.
+
+## PR #9 review fix — report-save failure (this round)
+
+Reviewer feedback: a report-save failure after a successful analysis was
+indistinguishable from a deliberately skipped save (both recorded `error: null`,
+null report paths). Fix keeps the v1 field structure and the existing query
+`warnings`.
+
+Original failing assertion (before the fix):
+
+```
+test/offline/test_manifest.py:815
+assert written["error"] == {"code": "report_save_failed", "message": "Report save failed."}
+E   AssertionError: assert None == {'code': 'report_save_failed', 'message': 'Report save failed.'}
+```
+
+After the fix (all green):
+
+- `status` records the analysis result; on a save failure it stays `succeeded`,
+  report paths are `null`, and `error` is
+  `{"code": "report_save_failed", "message": "Report save failed."}`. A skipped
+  save keeps `error: null`; a normal save records the actual relative paths.
+- `_offer_reports` returns the save outcome (with a `save_failed` flag) while
+  still returning `None` for a skipped save, so existing callers/stubs are
+  unchanged. The console uses fixed text; the raw exception is never stored.
+- `manifest query` recognises `report_save_failed` and adds a fixed warning while
+  keeping the matching record; the CLI `--json` `matches`/`warnings` shape is
+  unchanged.
+
+Targeted red-to-green:
+
+```
+$ .venv/bin/python -m pytest -q test/offline/test_manifest.py \
+    -k "report_save_failure or skipped_save_control or save_then_show or saved_report_path"
+5 passed
+$ .venv/bin/python -m pytest -q test/offline/test_manifest.py \
+    test/offline/test_cli_headless.py test/offline/test_eligibility.py
+116 passed
+```
+
+Full local regression and gates (this round, Python 3.13 `.venv`):
+
+```
+$ TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
+1678 passed, 1 skipped, 2 deselected, 24 warnings, 100 subtests passed in 130.31s
+$ .venv/bin/ruff check .
+All checks passed!
+$ .venv/bin/python scripts/check_governance.py
+(passed)
+$ git diff --check
+(clean)
+```
+
+The C suite is unchanged in count semantics; the earlier 1579 (pre-merge) and
+1665 (post-merge, before this fix) runs are kept above as history. Formal NFR-C
+acceptance and the implementation PR's independent review remain pending.

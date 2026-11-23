@@ -80,7 +80,8 @@
       "additionalProperties": {"type": "string"}
     },
     "status": {
-      "enum": ["running", "succeeded", "failed"]
+      "enum": ["running", "succeeded", "failed"],
+      "description": "Analysis result only. A report-save failure after a successful analysis keeps status 'succeeded' and is recorded in error."
     },
     "reports": {
       "type": "object",
@@ -99,7 +100,7 @@
     },
     "error": {
       "type": ["object", "null"],
-      "description": "Fixed error code plus safe text; null on success.",
+      "description": "Fixed error code plus safe text; null when nothing failed or the save was skipped. Records either an analysis failure (analysis_failed) or a post-success report-save failure (report_save_failed, message 'Report save failed.'; report paths are then null). Never contains an exception message or traceback.",
       "additionalProperties": false,
       "required": ["code", "message"],
       "properties": {

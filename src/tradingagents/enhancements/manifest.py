@@ -375,6 +375,11 @@ def _load_one(manifest_path: Path, root: Path, warnings: list[str]) -> Match | N
     reports = record.reports
     if not _check_report_paths(manifest_path, root, reports, warnings):
         return None
+    # A succeeded analysis whose report save failed is still a valid record; flag
+    # it with a fixed warning (no exception text) and keep it in the matches.
+    error = record.data.get("error") if isinstance(record.data, dict) else None
+    if isinstance(error, dict) and error.get("code") == "report_save_failed":
+        warnings.append(f"{manifest_path}: report save failed for this run, kept")
     return Match(
         run_id=record.run_id,
         ticker=record.ticker,

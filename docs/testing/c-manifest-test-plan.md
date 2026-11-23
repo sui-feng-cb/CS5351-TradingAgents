@@ -128,6 +128,9 @@ prematurely freeze the public API:
 | FR-C unsafe path | `test_report_path_escaping_results_root_warns_and_is_not_followed` | Real out-of-root temp file; traversal record warns, valid record still returned, escaping path not followed |
 | FR-C CLI + no analysis | `test_cli_manifest_query_subcommand_runs_and_starts_no_analysis` | Stdlib-placed fixed manifest + report; real Typer subcommand exit 0 with the matched report relative path; patched `run_analysis`/`run_backtest` never called |
 | FR-C saved report path | `test_cli_saved_report_path_is_what_manifest_records` | Real `run_analysis` with saving on; stub `save_reports` writes and returns a non-default-named file; on-disk manifest's `reports.complete_report_md`, resolved from the results root, equals that file and is not absolute |
+| FR-C save failure | `test_cli_report_save_failure_is_distinct_and_hides_exception` | Analysis succeeds and `save_reports` raises: `status == "succeeded"`, report paths null, `error == {"code": "report_save_failed", "message": "Report save failed."}`; exception marker/`OSError`/`Traceback` never persisted; show still runs |
+| FR-C skipped-save control | `test_cli_skipped_save_control_has_null_error` | A deliberately skipped save keeps `status == "succeeded"` and `error is None` (distinct from a save failure) |
+| FR-C save failure in query | `test_cli_report_save_failure_is_visible_in_query_json` | Real `manifest query --json` over a save-failure manifest keeps the match and surfaces a fixed `report save failed` warning; a skipped-save manifest raises no such warning; output has no exception text |
 
 Each case references its requirement ID via this table; assertions use literal
 contract values, not production helpers, so a bug cannot mirror itself.

@@ -481,6 +481,25 @@ class _SavingSuccessGraph(_SuccessGraph):
         return target
 
 
+class _FailingSaveGraph(_SuccessGraph):
+    """A successful graph whose ``save_reports`` raises, to exercise save failure.
+
+    The analysis itself succeeds; only report saving fails. The exception carries
+    a marker so a test can prove the raw error never reaches the manifest.
+    """
+
+    def __init__(self, message="save failed SECRET-SAVE-MARKER"):
+        super().__init__()
+        self.config_results_dir = None
+        self._message = message
+
+    def default_report_path(self, ticker):
+        return Path(self.config_results_dir) / "reports" / f"{ticker}_default"
+
+    def save_reports(self, final_state, ticker, save_path=None, html=True):
+        raise OSError(self._message)
+
+
 class _NullLive:
     def __init__(self, *a, **k):
         pass
@@ -616,6 +635,43 @@ def _run_saving_cli(tmp_path, monkeypatch, *, results_dir, ticker="NVDA",
     return results_dir, graph.saved_path
 
 
+def _run_save_failing_cli(tmp_path, monkeypatch, *, results_dir, ticker="NVDA",
+                          analysis_date="2026-01-10", message="save failed SECRET-SAVE-MARKER"):
+    """Drive a successful analysis whose ``save_reports`` raises, with show on.
+
+    Returns ``(results_dir, shown)`` where ``shown`` records whether the report
+    display ran. Uses save=True, show=True so the test can prove a failed save
+    neither aborts the run nor skips the show step.
+    """
+
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    graph = _FailingSaveGraph(message)
+    graph.config_results_dir = str(results_dir)
+    shown: list = []
+    config = {"data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)}
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", lambda *a, **k: graph)
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "display_complete_report", lambda state: shown.append(state))
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": ticker, "analysis_date": analysis_date,
+        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: config)
+
+    def _no_prompt(*a, **k):
+        raise AssertionError("save/show flags were supplied, so run_analysis must not prompt")
+
+    monkeypatch.setattr(cli_run.typer, "prompt", _no_prompt)
+
+    cli_run.run_analysis(flags={"save": True, "show": True, "html": False})
+    return results_dir, shown
+
+
 @pytest.mark.unit
 def test_cli_run_failure_is_recorded_with_a_safe_error_code(tmp_path, monkeypatch):
     # A distinctive original exception message that must NOT reach the manifest.
@@ -740,6 +796,47 @@ def test_cli_save_then_show_still_displays_and_records_report(tmp_path, monkeypa
     written = json.loads(manifests[0].read_text(encoding="utf-8"))
     assert written["status"] == "succeeded"
     assert written["reports"]["complete_report_md"] is not None
+
+
+@pytest.mark.unit
+def test_cli_report_save_failure_is_distinct_and_hides_exception(tmp_path, monkeypatch):
+    results_dir, shown = _run_save_failing_cli(
+        tmp_path, monkeypatch, results_dir=tmp_path / "results")
+
+    # Analysis succeeded and the show step still ran despite the save failure.
+    assert len(shown) == 1
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    raw = manifests[0].read_text(encoding="utf-8")
+    written = json.loads(raw)
+    assert written["status"] == "succeeded"
+    # A save failure is recorded and distinguishable from a skipped save.
+    assert written["error"] == {
+        "code": "report_save_failed",
+        "message": "Report save failed.",
+    }
+    # The report-save outcome carries null paths (nothing was written).
+    assert written["reports"]["complete_report_md"] is None
+    assert written["reports"]["complete_report_html"] is None
+    # The raw OSError text/marker must never be persisted.
+    assert "SECRET-SAVE-MARKER" not in raw
+    assert "OSError" not in raw
+    assert "Traceback" not in raw
+
+
+@pytest.mark.unit
+def test_cli_skipped_save_control_has_null_error(tmp_path, monkeypatch):
+    # Control: a deliberately skipped save must have error=null, unlike a failure.
+    results_dir = _run_successful_cli(
+        tmp_path, monkeypatch, results_dir=tmp_path / "results")
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    written = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert written["status"] == "succeeded"
+    assert written["error"] is None
+    assert written["reports"]["complete_report_md"] is None
 
 
 @pytest.mark.unit
@@ -1453,3 +1550,32 @@ def test_manifest_query_starts_without_loading_analysis_backtest_or_models(tmp_p
     assert payload["matches"][0]["ticker"] == "AAPL"
     assert payload["matches"][0]["trade_date"] == "2026-11-20"
     assert json.loads(lines["LOADED"]) == [], f"query loaded heavy modules: {lines['LOADED']}"
+
+
+@pytest.mark.unit
+def test_cli_report_save_failure_is_visible_in_query_json(tmp_path, monkeypatch):
+    # Produce a real save-failure manifest, then a skipped-save control, both
+    # through the real run_analysis, and query them via the real Typer command.
+    fail_root = tmp_path / "fail_results"
+    _run_save_failing_cli(tmp_path, monkeypatch, results_dir=fail_root,
+                          ticker="FAILX", analysis_date="2026-01-10")
+    skip_root = tmp_path / "skip_results"
+    _run_successful_cli(tmp_path, monkeypatch, results_dir=skip_root,
+                        ticker="SKIPX", analysis_date="2026-01-10")
+
+    import cli.main as cli_main
+
+    code, payload, out = _invoke_query(cli_main, ["--results-dir", str(fail_root)])
+    assert code == 0, out
+    assert [m["ticker"] for m in payload["matches"]] == ["FAILX"]
+    assert payload["matches"][0]["status"] == "succeeded"
+    assert payload["matches"][0]["reports"]["complete_report_md"] is None
+    joined = " ".join(payload["warnings"]).lower()
+    assert "report save failed" in joined
+    assert "SECRET-SAVE-MARKER" not in out and "OSError" not in out
+
+    # A skipped save has error=null, so the query raises no such warning.
+    code, payload, out = _invoke_query(cli_main, ["--results-dir", str(skip_root)])
+    assert code == 0, out
+    assert [m["ticker"] for m in payload["matches"]] == ["SKIPX"]
+    assert not any("report save failed" in w.lower() for w in payload["warnings"])

@@ -512,13 +512,22 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         raise
 
     # Success: record the report paths actually saved (relative to the root).
+    # A report-save failure keeps status="succeeded" (the analysis succeeded) but
+    # records a fixed error so it is distinguishable from a skipped save.
+    save_failed = bool(save_info and save_info.get("save_failed"))
+    reports = (
+        {"complete_report_md": save_info.get("complete_report_md"),
+         "complete_report_html": save_info.get("complete_report_html")}
+        if save_info else {"complete_report_md": None, "complete_report_html": None}
+    )
     _write_run_manifest(
         path=manifest_path, results_root=results_root, run_id=run_id,
         ticker=selections["ticker"], trade_date=selections["analysis_date"],
         started_at=started_at, finished_at=run_manifest.utc_now_iso(),
         status="succeeded", analysts=selected_analyst_keys, config=config,
-        reports=save_info or {"complete_report_md": None, "complete_report_html": None},
-        error=None,
+        reports=reports,
+        error={"code": "report_save_failed", "message": "Report save failed."}
+        if save_failed else None,
         asset_type=selections["asset_type"],
     )
 
@@ -565,9 +574,13 @@ def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None,
     answering the save question at the prompt is also asked about the page and
     offered to open it; a run whose flags answer the save question asks neither.
 
-    Returns the report paths actually written, relative to ``results_root`` (the
-    paths the manifest records): ``{"complete_report_md": rel|None,
-    "complete_report_html": rel|None}``, or ``None`` when nothing was saved.
+    Returns a save outcome dict when saving was attempted, else ``None`` (the
+    existing contract some callers/stubs rely on). The dict always carries the
+    two manifest report keys ``complete_report_md`` / ``complete_report_html``
+    (path relative to ``results_root`` or ``None``) plus ``save_failed`` (True
+    when ``save_reports`` raised). A skipped save returns ``None`` so the caller
+    records ``error=null``; a failed save records a fixed ``report_save_failed``
+    error without leaking the exception text.
     """
     asked = save is None
     if asked:
@@ -590,15 +603,19 @@ def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None,
             html = _yes("Also save it as an HTML page?") if asked else True
         saved = False
         report_file = None
+        save_failed = False
         try:
             report_file = graph.save_reports(final_state, ticker, save_path, html=html)
             saved = True
             console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
-        except Exception as e:
-            console.print(f"[red]Error saving report: {e}[/red]")
+        except Exception:  # noqa: BLE001 - a save failure must not abort the run
+            # Fixed text only: the exception message is never shown or stored.
+            save_failed = True
+            console.print("[red]Report save failed. The analysis result is still recorded.[/red]")
         # A save result or failure is recorded, but the show step below still runs.
-        save_info = {"complete_report_md": None, "complete_report_html": None}
+        save_info = {"complete_report_md": None, "complete_report_html": None,
+                     "save_failed": save_failed}
         if saved:
             md_rel = _relative_report_path(report_file, results_root) if results_root else None
             page = (save_path / "complete_report.html")
@@ -608,7 +625,8 @@ def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None,
                 console.print(f"  [dim]HTML report:[/dim] {page.name}")
                 if asked:
                     _open_page(page.resolve())
-            save_info = {"complete_report_md": md_rel, "complete_report_html": html_rel}
+            save_info = {"complete_report_md": md_rel, "complete_report_html": html_rel,
+                         "save_failed": False}
 
     # Showing the report happens whether or not it was saved (and even if saving
     # failed), matching the pre-existing behavior.

@@ -42,10 +42,14 @@ review remain pending.
     analysts, models, configured_data_vendors, status, reports, error,
     unknown_fields. Extra top-level keys are rejected.
   - Nullable: `finished_at` (running), `code_version` (unknown), `models`
-    (unknown), `error` (success). `trade_date`/`as_of` are `YYYY-MM-DD`;
+    (unknown), `error` (null when neither the analysis nor a requested report
+    save failed). `trade_date`/`as_of` are `YYYY-MM-DD`;
     `started_at`/`finished_at` are UTC-aware ISO-8601.
-  - `status` is `running | succeeded | failed`; analysis outcome and report-save
-    outcome are expressed separately, not as one overloaded field.
+  - `status` records the analysis result (`running | succeeded | failed`);
+    `error` separately records a failure — either the analysis
+    (`analysis_failed`) or, when the analysis succeeded but the report could not
+    be saved, `report_save_failed` (message `Report save failed.`). A skipped
+    save is `error: null`. The two outcomes are not overloaded onto one field.
   - `models` validates per-tier `provider`/`model` only (no endpoints/keys);
     `configured_data_vendors` is the filtered source configuration, not
     per-request provenance.
