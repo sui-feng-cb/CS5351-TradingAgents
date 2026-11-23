@@ -13,9 +13,10 @@ or provide broker execution.
 - FR-D/NFR-D now have a local team-mode eligibility implementation in the D
   branch, and FR-C/NFR-C are implemented locally on the C branch (47 C cases;
   the implementation PR's independent review is pending, and the
-  reused-custom-report-directory policy is still to confirm). A and B remain
-  planned. Local offline regressions pass; remote CI and independent review
-  remain pending before merge. See
+  reused-custom-report-directory policy is still to confirm). A and B
+  implementation code is merged into `main`; each module's acceptance status
+  follows its own record. Local offline regressions pass; remote CI and
+  independent review remain pending before merge. See
   [`docs/req/requirements.yaml`](docs/req/requirements.yaml) and
   [`docs/architecture/trace-matrix.md`](docs/architecture/trace-matrix.md).
 

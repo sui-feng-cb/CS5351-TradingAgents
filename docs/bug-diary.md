@@ -1,5 +1,28 @@
 # Significant bugs
 
+## BUG-A-001 — unquoted colon in FR-A/NFR-A statement broke governance YAML load
+
+- Requirements: FR-A, NFR-A; QUA-01, GOV-01.
+- Symptom: after adding `Acceptance owner: D; contract approver: D` to the
+  FR-A/NFR-A `statement` values, `python scripts/check_governance.py` exited 1
+  with `yaml.scanner.ScannerError: mapping values are not allowed here` at
+  line 11, column 180. The failure occurred before JSON Schema validation.
+- Root cause: the new text was a YAML plain scalar containing `: `; YAML parses
+  that colon-space as a mapping value separator. The schema itself was not
+  involved.
+- Fix: quote both `statement` values as YAML double-quoted scalars. The
+  registry then loaded and passed `req-schema.json`; FR-A and NFR-A remain
+  `planned`, and both include `Acceptance owner: D; contract approver: D`.
+- Evidence: `python scripts/check_governance.py` then printed
+  `Registry/schema, course layout and permission synchronization passed` and
+  `Basic credential-pattern scan passed`, exit 0; targeted Draft 2020-12
+  validation reported PASS for the full registry.
+- Exposed gap: requirement/contract edits were reviewed as text diffs without
+  first running the authoritative YAML loader. `check_governance.py` surfaces a
+  raw scanner traceback rather than a governance-level syntax error, so
+  malformed registry syntax is not reported as a schema failure.
+- State: fixed locally; no commit or push. Contract remains DRAFT.
+
 ## BUG-D-003 — PR #3 found three qualification bypasses beyond the original suite
 
 - Requirements: FR-D, NFR-D, INV-D, BASE-01; ADR-002.

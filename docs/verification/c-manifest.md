@@ -158,3 +158,27 @@ not a C result.
 - Team confirmation of the A/Python run-association interface, backtest coverage,
   reused-custom-path policy, the `analysis_failed` / `Analysis failed.` fixed
   values, and the CLI `matches`/`warnings` outer structure.
+
+## Merge with origin/main (0a48402) — this round
+
+Merged origin/main (0a48402) into `c-manifest-implementation` (HEAD 6362ddb) and
+resolved three documentation conflicts (ai-use-log, interface-contracts,
+requirements). The earlier section recorded **1579 passed** as the pre-merge C
+baseline; it is kept as history. Post-merge actual results:
+
+```
+$ TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
+1665 passed, 1 skipped, 2 deselected, 24 warnings, 100 subtests passed in 76.80s
+$ .venv/bin/ruff check .
+All checks passed!
+$ .venv/bin/python scripts/check_governance.py
+Registry/schema, course layout and permission synchronization passed
+Basic credential-pattern scan passed (not a complete secret detector)
+$ git diff --check
+(clean)
+```
+
+The C module, `manifest query` and run-recording remain green; the C suite is
+unchanged at 47 cases. The implementation PR's independent review and formal
+NFR-C acceptance (fixed CI runner, three-process method, ≤2.0 s threshold) are
+still pending; the reused-custom-report-directory policy is still to confirm.

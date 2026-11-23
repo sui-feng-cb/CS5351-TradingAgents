@@ -524,6 +524,454 @@ the required suite must pass after implementation. The pending candidate contrac
 values and NFR-C target remain subject to team confirmation. This review does not
 approve application implementation or merge.
 
+## FR-A / NFR-A 同日双标的比较 PR（draft）
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **PR:** #7 — https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/7
+- **Reviewer:** 待填（必须为非作者；不得自批）
+- **Base:** main
+- **Head:** 40bbe2cd8fd2799d629c1a4acf88dfa5c57bb62a
+- **Date:** 2026-11-23
+- **Scope:** FR-A、NFR-A、INV-A；A-IC-001（2026-11-23 冻结）
+- **Files:** `src/tradingagents/enhancements/comparison.py`、
+  `test/offline/test_comparison.py`、`docs/architecture/interface-contracts.md`、
+  `docs/architecture/invariants.md`、`docs/architecture/trace-matrix.md`、
+  `docs/req/requirements.yaml`、`docs/bug-diary.md`、`docs/ai-use-log.yaml`
+
+### 需求与架构对齐
+
+- FR-A：两个不同 ticker、同一 canonical 日期、顺序调用上游；
+  输出比较 Markdown + 强制 manifest；字段顺序符合 draft-0.3。
+- NFR-A：任一 ticker 失败时另一成功报告保留；失败行 rating/summary/report_path
+  为 null；不跨 ticker 回填。
+- INV-A：已登记；A-FAIL/A-XTALK 覆盖。
+- 未改 graph/agents/eligibility/CLI/provider/prompt；不触发 safety-critical
+  路径的 ADR+独立安全评审要求，但仍需非作者最终评审。
+
+### 代码与测试
+
+- 仅新增编排/汇总；无新增运行时依赖。
+- 离线 fake graph；30 个 comparison 测试在隔离本地运行通过。
+- 覆盖两成功、REVIEW、第一/第二/双失败、save 失败、MISSING rating、
+  输入错误、归一化、XTALK、manifest 一致性。
+- 本地缺少 yfinance，完整 conftest/全回归未在本地完成；以 CI Python 3.13 为准。
+
+### 运行元数据
+
+- `comparison_id = cmp_<uuid4 hex>`；`generated_at` 为 UTC RFC3339 `Z`。
+- `report_path` 相对 `config["results_dir"]`，使用上游 `default_report_path()`。
+- Markdown/manifest 由同一不可变结果派生。
+
+### 安全
+
+- 未改 `src/tradingagents/graph/`、`src/tradingagents/agents/`、
+  `eligibility.py`。
+- 输入校验先于任何 graph 运行；失败项不携带有效评级。
+- 无密钥、凭证 URL 或账户数据进入报告。
+
+### 效率
+
+- 顺序执行两次上游分析；无额外 LLM 调用。
+- 摘要提取为确定性文本处理；无新增 provider 调用。
+- `comparison_manifest.json` 为小型本地产物。
+
+### 验证证据
+
+- `PYTHONPATH=src:. python -m pytest test/offline/test_comparison.py -q --confcutdir=test/offline`
+  → 30 passed。
+- `python -m py_compile src/tradingagents/enhancements/comparison.py test/offline/test_comparison.py`
+  → 通过。
+- `ruff check .`（临时 venv，ruff 0.17.6）→ All checks passed。
+- `python scripts/check_governance.py` → 通过。
+- `git diff --check` → 通过。
+- 未运行：完整本地 conftest/全回归（缺 yfinance）、CI Python 3.13 全量。
+- `comparison.py` 不在当前 CI mypy 覆盖范围；mypy 仅覆盖治理脚本。
+
+### 发现
+
+- 本地审查未发现新的阻塞性问题；最终结论由独立评审人填写。
+
+### 决定
+
+**PENDING — reviewer to fill.** 评审人须给出 `APPROVE`、`CHANGES REQUIRED` 或 `REJECT`。
+## PR #6 · B 分支同步与提交边界审查 · 2026-11-23
+
+- **仓库 / PR：** [sui-feng-cb/CS5351-TradingAgents #6](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6)
+- **审查人：** OpenCode，按用户要求审查分支同步、权限边界与重新送审条件。
+- **Base：** `main` / `41e1b0b5f0717d349dab5a688634a32a388b7466`
+- **Head：** `B-60284898` / `9a50f83f97afa8f4fb4607e5372c035c2f50f5e2`
+- **共同祖先：** 上游基线 `9fa1196fffbcfd9de5146d2dd2869df84ab99838`。
+- **范围：** FR-B、NFR-B、INV-B、BASE-01、GOV-01、QUA-01；依据 ADR-001、
+  ADR-003、`AGENTS.md:15-28`、共享接口契约及当前生效的 OpenCode 权限配置。
+  本轮是同步与集成前置审查，B 的完整功能、模型质量与性能验收仍待同步后进行。
+
+### 审查发现（按严重程度排序）
+
+1. **P1 — 分支从上游基线直接开发，未纳入团队 main，当前不可合并。**
+   GitHub compare 和本地提交图均确认 B 落后 main **8 个提交**、独有 **1 个提交**；
+   PR 状态为 `CONFLICTING / DIRTY`。当前 PR 的 42 个文件、4,994 行新增包含
+   `AGENTS.md`、`Prompt.md`、两份 rules、需求注册表及多份共享架构文档的重新创建，
+   与 main 已有文件形成冲突。请先在 **B 自己的本地开发分支** 合并最新
+   `origin/main`，逐项解决冲突，保留 main 的 src 布局、D 实现、安全修复、
+   C 测试契约及治理历史。不得整批选择 B 版本覆盖共享文件。
+   注意：`git diff main B` 显示的缺失/回退是两棵分支树的差异，不能直接称为
+   B 本次 PR 主动删除这些文件；真正需要审查的是合并后的 PR diff。
+
+2. **P1 — 共享治理文件与权限边界必须由 B 自查，不能通过放宽配置消除拒绝。**
+   PR 同时新增 `.opencode/rules.md`、`.agent/rules.md`、`AGENTS.md`、
+   `Prompt.md`，并修改 `.github/workflows/ci.yml`。
+   main 的 `.opencode/opencode.json:8-14,23` 和
+   `.opencode/permissions.jsonc:4-10` 规定：
+   - `plan` agent 禁止所有编辑；需按人工批准流程进入适当阶段。
+   - `.opencode/rules.md` 明确 `deny` 且由人类维护；`AGENTS.md`、
+     `Prompt.md`、`.agent/rules.md` 不在编辑白名单内，落入默认 `deny`。
+   - `src/**`、`test/**`、`docs/**`、`scripts/**`、`prompts/**`、
+     `.github/**` 等是逐次确认的 `ask`，不等于模块负责人可任意修改共享文件。
+   请 B 对照合并后的配置与自己真实会话中的拒绝记录，列出
+   **路径、拒绝操作/原因、实际是否改动、是否属于 B 范围、处理方式、人工批准依据**。
+   非 B 范围的重建/覆盖应清理；确需修改的共享文件交协调人或人类按流程处理。
+   不得改权限、改 rules 或换 shell/脚本绕过拒绝。当前未取得 B 的本地拒绝日志，
+   上述是配置核对结果，不能冒称已确认 B 实际遇到了哪些拒绝。
+
+3. **P1 — 实现位置偏离约定，测试导入方式不能证明安装后可用。**
+   PR 新增 `src/event_merge/`，而 B 的约定入口为
+   `src/tradingagents/enhancements/events.py`（`AGENTS.md:20`）。
+   main 的 `pyproject.toml:56-58` 仅打包 `tradingagents*` / `cli*`；
+   B 的 `test/conftest.py:14-16` 手动把 `src/` 放入 `sys.path`，可能掩盖包未交付的问题。
+   合并后请按既有包与接口契约收敛实现，或先取得团队对路径/契约调整的明确批准；
+   使用干净安装验证正式导入，不能仅凭测试目录中的导入通过判定交付成功。
+
+4. **P2 — 验证记录仍是旧分支口径，需按新 head 重跑并更正声明。**
+   PR 描述的 `50 passed` 仅覆盖 B 旧分支的 `test/offline/`，不能代表团队全量回归。
+   新增 CI 作业使用 Python **3.12**（`.github/workflows/ci.yml:76-78`），
+   与 main 的 Python 3.13 要求不一致，合并后 editable install 会不满足版本要求。
+   `test/offline/test_semantic_eval.py::_run_gate` 使用按标签构造的 mock 分组验证
+   指标及阈值逻辑，不能作为真实模型 precision/recall 的质量证明。
+   请在重新送审时提供新 head、完整命令/结果、CI 链接，并区分 mock 门禁验证与
+   可重放的真实模型评估证据；未验证或未获人工确认的结果/数据冻结状态不得写成已完成。
+
+### B 重新申请 review 前的处理顺序
+
+1. 保存并核对自己的工作区，确认位于 `B-60284898`；获取最新远端后，在本地执行
+   `git merge origin/main`。逐文件处理冲突，确保 main 的团队成果完整保留。
+2. 重新读取 main 的入口、接口、ADR、权限配置和规则；完成上述权限拒绝项清单。
+   清理共享文档的重复初始化，只保留经批准、可追踪的 B 增量。
+3. 核对 `git diff --name-status origin/main...HEAD`、
+   `git diff origin/main...HEAD`、`git diff`、`git diff --cached` 及
+   `git status --short`，同时检查未暂存、已暂存和未跟踪文件。
+   如有合并冲突，可用 `git diff --name-only --diff-filter=U` 核对剩余未解决项。
+4. 用项目 Python 3.13 执行：
+
+   ```bash
+   .venv/bin/python scripts/check_governance.py --base origin/main
+   TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
+   .venv/bin/python -m ruff check .
+   .venv/bin/python -m mypy scripts/check_governance.py
+   .venv/bin/python -m pip check
+   git diff --check origin/main...HEAD
+   git diff --check
+   git diff --cached --check
+   ```
+
+   当前治理脚本仍会阻止尚未接入获批评估的 `events.py` / 运行时 prompt 语义变更
+   （`scripts/check_governance.py:120-121`）。若触发，应协调完成获批评估与门禁接入，
+   不得改名绕过或删掉检查。保留所有既有测试与断言。
+5. 完成人工批准的提交后，再核对最终提交及 `origin/main...HEAD` 全量 diff，
+   确认提交内容与已验证工作区一致；更新 PR 描述、AI-use 日志和真实会话证据。
+   推送更新到原 PR 后确认无冲突、CI 已运行，再附 **新 head SHA、同步的 main SHA、
+   权限自查清单和验证摘要** 重新申请 review。
+
+### 本轮证据与验证边界
+
+- 只读查询：`gh pr view 6 --repo sui-feng-cb/CS5351-TradingAgents --json ...`、
+  `gh api repos/sui-feng-cb/CS5351-TradingAgents/compare/main...9a50f83f97afa8f4fb4607e5372c035c2f50f5e2`。
+  GitHub 返回 ahead 1 / behind 8、`CONFLICTING / DIRTY`，`reviews` 与
+  `statusCheckRollup` 均为空；因此没有可据以认定通过的远端检查结果。
+- 本地 `git rev-list --left-right --count main...origin/B-60284898` 返回 `8 1`；
+  `git merge-base` 返回上述上游基线。已确认本地 B 远端跟踪引用与 PR head 一致。
+- 本轮保持在 main，以 Python **3.13.18** 运行完整默认离线套件：
+  **1532 passed、29 failed、1 skipped、1 deselected、100 subtests passed**。
+  29 个失败全部来自已合并的 C tests-first 契约（manifest 模块/CLI 尚未实现），
+  是 B 同步前的 main 基线，不归因于 B，也不能用删除/跳过 C 测试来消除。
+  B 同步后应报告相对该基线的新增失败；必需检查仍为红色时不能宣称 merge-ready。
+- main 上 `.venv/bin/python scripts/check_governance.py`、
+  `.venv/bin/python -m ruff check .`、
+  `.venv/bin/python -m mypy scripts/check_governance.py`、
+  `.venv/bin/python -m pip check` 均通过。
+  未运行 B head 的测试或真实模型评估；PR 描述中的 B 测试与质量数字未经本轮复现。
+- 本轮只更新本地 review/session 文档；未替 B 合并、修复或提交，也未向 GitHub 提交 review。
+
+### 结论
+
+**CHANGES REQUIRED。** 请 B **先在本地 merge 最新 main → 自查权限拒绝与共享文件边界
+→ 清理并逐项核对最终 diff → 按新 head 验证并复核提交 → 更新原 PR 后重新申请 review**。
+当前分支存在合并冲突，且实现路径、共享治理文件与验证口径尚未对齐，不进入批准阶段。
+
+## PR #6 复审 · `1f57b39` · 2026-11-23
+
+- **仓库 / PR：** [sui-feng-cb/CS5351-TradingAgents #6](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6)
+- **审查人：** OpenCode，按用户请求复审更新后的实现与测试。
+- **Base：** `main` / `41e1b0b5f0717d349dab5a688634a32a388b7466`
+- **上轮 head：** `9a50f83f97afa8f4fb4607e5372c035c2f50f5e2`
+- **本轮 head：** `B-60284898` / `1f57b394e50dd23ad75e682ad1aee29e53e7ec28`
+- **范围：** FR-B、NFR-B、INV-B、INV-ASOF、BASE-01、GOV-01、QUA-01；
+  ADR-001（团队布局）、ADR-003、B 新增 ADR 与接口契约 B 条款。
+  核对了 PR 的 7 个提交历史，并审查相对 main 的最终 9 文件 diff；未调用真实模型/供应商。
+
+### 上轮整改核对
+
+- **main 同步与冲突已解决。** 合并提交 `9a6882a` 包含上述 main；
+  `git rev-list --left-right --count main...HEAD` 为 `0 7`，GitHub 为
+  `MERGEABLE / UNSTABLE`。当前状态不再是上轮的分支冲突。
+- **共享文件覆盖已清理。** `AGENTS.md`、`Prompt.md`、两份 rules、权限配置、
+  需求注册表、共享接口、`pyproject.toml` 和 `test/conftest.py` 相对 main 无差异。
+  D 实现、安全修复及 C 契约均保留。PR 增补了文件处理清单；它仍不是完整的
+  本地拒绝操作/原因/批准记录，因此不推断作者的历史操作或声称审批已核实。
+  `.github/workflows/ci.yml` 仍有新增 B 作业，PR 的“未修改团队共享文件”表述应准确说明该例外。
+- **模块路径已纠正。** 最终 diff 不再包含 `src/event_merge/` 或 `sys.path` 注入，
+  改为 `src/tradingagents/enhancements/events.py`。本轮 `python -I` 下从现有
+  editable install 正式命名空间导入成功；远端 clean-install smoke 通过，但其命令
+  只导入 package/CLI，不能冒称专门验证了 events 的非 editable 安装。
+- **Python 版本已纠正为 3.13，验证尚未全部通过。** 作者已区分 C 既有失败及
+  语义治理阻断；Ruff 仍有可复现的新失败，完整语义评估和真实业务接入仍缺失。
+
+### 审查发现（按严重程度排序）
+
+1. **P1 — 默认新闻与模型入口仍是占位，FR-B 的真实新闻归并流程未交付。**
+   `src/tradingagents/enhancements/events.py:431-446` 的默认 fetcher 一律抛
+   `NotImplementedError`；`:612-626` 的默认模型也一律抛错，且会被归并入口吞掉。
+   当前所有成功用例都靠调用方注入 fetcher/llm。测试注入是合理的，但没有已接入的
+   上游数据/模型适配器与公开调用链，不能据此称 FR-B 已完成。
+   请协调 dataflows 的结构化新闻接口并接入现有模型客户端，保持供应商边界和
+   最多一次真实归并请求（包括禁用隐藏 SDK 重试），补充走正式入口、仅在供应商/
+   模型传输层 mock 的离线集成测试。接口变化先经协调批准；不要通过恢复业务层直连
+   vendor SDK 来绕过分层约束。若只交付可注入的核心组件，应明确缩小 PR 完成声明，
+   并保留 FR-B 整体未完成状态。
+
+2. **P1 — 时间窗口和数量限制未形成确定性输入边界，可发布窗口外证据。**
+   `events.py:465-478` 先取原始前 5 条，没有解析/过滤发布日期；`:659-675`
+   又直接接受调用者的 records/tickers/window，没有验证日期、窗口或每 ticker 上限。
+   独立离线复现：请求 `2026-11-15..2026-11-22`，每 ticker 的前 5 条为
+   `2026-11-23`、第 6 条为窗口内新闻，结果返回 **10 条未来记录**，合法记录被截掉；
+   将两个未来记录交给 `merge_once`，模型引用输入 ID 后仍得到 `merged` 与已验证证据。
+   另以每 ticker 6 条直接调用，12 条均可交给模型并被接受。
+   请在分配 ID/限量前按可信时间过滤，拒绝缺失/非法日期；在正式归并入口统一校验
+   2–3 个有效不同 ticker、≤7 天窗口、记录归属和每 ticker ≤5 条，非法输入应在
+   模型调用前拒绝或按获批契约明确降级。补充未来/过期/缺日期、过滤后限量及直接入口越限负例。
+
+3. **P1 — 语义评估没有评估生产归并流程，且失败样例可被跳过后错误通过门禁。**
+   `test/live/test_semantic_eval_live.py:149-170,197-249,268-276` 用另一套
+   “same/different”两条新闻判别 prompt 逐对调用模型，未经过 `merge_once`、
+   实际分组 prompt、结构解析与 validator，因此其数字不能证明 FR-B 实际分组质量。
+   同时，调用失败/无法解析的 pair 不进入 FN/FP，`_assert_gate` 不检查失败数或覆盖率。
+   本轮把模型替换为完全离线 stub：24 对中仅 s01 返回正确 `same`，其余 23 对抛错，
+   得到 **TP=1、FP=0、FN=0、failed=23、precision=recall=1.0，门禁仍 PASS**。
+   请用获批固定、版本化数据走真实批次归并代码，再从最终分组计算 pairwise 指标；
+   API/解析失败必须阻断验收或按事先批准的保守规则计入，不能缩小分母后报告通过。
+   保存模型/provider、实际 prompt/数据版本或哈希、逐项输出及全量统计，并在 CI 接入
+   可重放验证。`.github/workflows/ci.yml:74-87` 当前仅重复运行 offline 套件，
+   没有语义质量门禁；`scripts/check_governance.py:120-121` 的阻断仍需团队协调解决，
+   不能仅删除检查或改名绕过。日志中 23/24 成功的既有 PASS 不能视为完整评估验收。
+
+4. **P2 — JSON 能解析不等于 schema 合法，畸形输出可崩溃或发布空事件。**
+   `events.py:585-598` 只检查最外层 list，`:687` 在异常处理之外调用 validator；
+   `:750-757` 默认信任 event/claim 类型，`:789-795` 不验证必要事件字段。
+   离线复现 `{"events":[null]}` 抛 `AttributeError`，
+   `{"events":[{"evidence_ids":[{}]}]}` 抛 `TypeError`；
+   仅提供两个有效 ID、缺少 event_id/summary 的事件则被发布为 `merged`，摘要为空。
+   请验证完整输出形状、字段类型和必要非空值，畸形模型结果走可观测的失败路径，
+   保留输入为未归并并保证不发布无效事件；覆盖上述字面负例和正常分组对照。
+
+5. **P2 — 模型不可用/解析失败被报告为“没有共同事件”。**
+   `events.py:601-609,677-685` 把异常统一变成 `no_common_event`，没有失败原因；
+   默认未接入模型也会走这条路径。独立抛错 stub 复现了这一结果。
+   “未成功分析”不能作为“分析后没有共同事件”的结论，违反
+   `docs/reference/module-acceptance.md:46-52` 的失败语义。
+   请协调明确失败状态/原因或受控异常契约，并独立测试无新闻、真实空分组、
+   模型异常和 schema/JSON 错误的区别，同时保持不发布未验证事实。
+
+6. **P2 — Ruff 必需检查仍失败，PR 的全通过描述不符合当前 head。**
+   `test/live/test_semantic_eval_live.py:23-35` 存在 `I001` 导入块格式错误；
+   本地全仓 Ruff 与远端对应 head 结果一致。请修正后运行全仓检查，再更新
+   PR/AI-use 验证记录，不要继续沿用“ruff 全部通过”的旧口径。
+
+### 文档与证据整理
+
+- 新增 B ADR 的编号仍为 `ADR-001`，与团队布局 ADR 重复；正文引用
+  `FR-B-1..7` / `NFR-B-1..3` / `INV-B-1..5`，但当前权威注册表仅有
+  FR-B、NFR-B、INV-B。请使用唯一 ADR 编号并提供子项到权威 ID 的明确映射。
+- `docs/architecture/evaluation-logbook.md:32-40` 和 live 文件开头仍引用已删除的
+  分散测试及不存在的 B evaluation-table 章节；B ADR 的 snippet 截断声明也未由
+  `events.py` 实现。请按当前结构和真实边界修订。保留历史结果时标明对应版本。
+- 当前数据集写“成员 B 冻结”，本轮没有取得团队共同冻结证据或逐项模型原始输出；
+  不替作者补造批准、来源核实或模型测量结果。完整会话仍需真实 `/export`。
+
+### CI 失败分类
+
+最新 head 的 `pull_request` run
+[45153885882](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45153885882)
+和 `push` run
+[45153868055](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45153868055)
+各有 tests、B-module、Ruff 失败；另有 safety review 失败：
+
+| 检查 | 已核实原因 / 影响 |
+|---|---|
+| tests / B-module | 所读 pull_request 日志均为 29 个 C manifest/CLI 既有失败，1601 passed、1 skipped、100 subtests passed（全量另有 2 deselected）；B-module 实际运行整个 offline 目录，不是 B 的 39 项失败。保留 C 测试，不能归因于 B 或删除以转绿；必需检查红色仍影响合并。 |
+| Ruff | B 新增 live 文件的 I001，可修复的新失败。 |
+| safety review | [run 45153885727](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45153885727) 在 `Check PR changes` 因未接入获批语义评估而失败，尚未进入后续安全 review 检查；不是本轮查证到的“缺少同 PR 测试批准”。 |
+| governance / clean-install smoke | 两次触发均显示通过；基础治理检查通过不等于带 `--base` 的语义变更门禁通过。 |
+
+### 本地验证（固定本轮 head，Python 3.13.18）
+
+- `TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings`：
+  **1571 passed、29 failed、1 skipped、2 deselected、100 subtests passed**。
+  失败仅在既有 C `test_manifest.py`；相对上轮 main 的 1532 passed 增加 B 的 39 项。
+  远端通过数为该 CI 环境实际报告值，不将本地/远端不同数字混称为同一次测量。
+- `.venv/bin/python -m pytest -q --tb=short --disable-warnings
+  test/offline/_pr6_review_probe.py test/offline/test_events.py`：
+  **7 failed、39 passed**；7 个独立审查负例分别暴露窗口过滤、数量边界、两种 schema
+  崩溃、空摘要发布、异常状态混淆、评估跳过失败仍通过。
+  追加未来证据发布负例后单独运行该 case，再得到 **1 failed**，证实未来新闻可成为
+  verified event。临时 probe 文件已删除，生产代码与作者测试未修改。
+- `.venv/bin/python scripts/check_governance.py --base main`：基础 registry/schema/
+  布局/权限同步和扫描通过，语义变更检查失败（与远端 safety job 相同）。
+- `.venv/bin/python -m ruff check .`：失败，1 个 I001。
+- `.venv/bin/python -m mypy scripts/check_governance.py`、
+  `.venv/bin/python -m pip check`、`git diff --check main...HEAD`：均通过。
+- `.venv/bin/python -I -c "from tradingagents.enhancements import events; print('installed namespace import:', events.__name__)"`：成功。
+- 远端只读核对使用 `gh pr view 6 --repo sui-feng-cb/CS5351-TradingAgents --json ...`、
+  `gh run view 45153885882 --repo sui-feng-cb/CS5351-TradingAgents --log-failed`，
+  并单独读取该 run 的 Ruff job `137621829621`、B job `137621830338` 及
+  safety run `45153885727` 的失败日志。未提交 GitHub review。
+- 为保护上轮未提交的 review 文档，先仅暂存到 stash，detach 到审查 head 验证，
+  再返回 main 恢复原文档。当前只追加 review/session 记录；没有应用修复、提交、推送或合并。
+
+### 结论
+
+**CHANGES REQUIRED。** 上轮要求的 main 同步、共享文件清理、路径迁移和 Python 版本
+已落实，应予确认；本轮发现的真实入口缺失、输入时间/数量边界、语义验收有效性及输出
+schema/失败状态缺陷仍阻止批准。请先补充独立回归并修复上述问题、完成团队评估接入，
+更正当前 head 的验证记录后再申请复审。已有 39 项 B 测试通过不等于 FR-B/NFR-B 完整验收通过。
+
+## PR #7 · A 同日双标的比较代码审查 · 2026-11-23
+
+- 审查人 OpenCode。范围为 FR-A、NFR-A、INV-A、SEC-01，以及 A-IC-001 和 ADR-001 的扩展边界。合并流程按本轮委托暂缓评估。 [GitHub PR #7](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/7)
+- 合并前 `main` 为 `41e1b0b5f0717d349dab5a688634a32a388b7466`。审查 head 为 `ea49ffba50c43ea2def802bec21a70fac6f2c38a`，与合并提交 `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e` 内容一致。
+- API 顺序复用两次上游分析和报告保存，沿用现有依赖，比较级 manifest 单独落盘。现有测试覆盖两个单失败方向及 `REVIEW` 报告保留。CLI 属后续协调集成范围。
+
+### 审查发现
+
+1. **P1 — 上游异常原文进入公开结果和工件。** `_failure_reason` 仅对 `str(exc)` 去除首尾空白。离线给分析异常和保存异常注入合成凭证 URL、token 和账户标记，均复现泄露至返回的失败原因。该字段直接写入 Markdown 和 JSON，分析异常的落盘也已复现。违反 A-IC-001 §3 和 SEC-01。请公开稳定原因码及固定安全文案，并断言 `PARTIAL` 下另一标的的报告保留，三个输出均无敏感标记。 [异常处理](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/ea49ffba50c43ea2def802bec21a70fac6f2c38a/src/tradingagents/enhancements/comparison.py#L145-L164)
+2. **P1 — 结果身份和报告归属缺少校验。** `run_one` 用输入 ticker 标记行，却直接采信 graph 返回的状态。报告路径检查只确认文件存在且位于结果根内。离线让 AAPL 收到 MSFT 状态并返回 MSFT 报告，AAPL 仍被标记 `SUCCESS` 并发布 `Sell`。只替换报告返回值时，MSFT 目录下的 `notes.md` 也被当成 AAPL 完整报告。请在保存前核对状态里的 ticker 和分析日期，在发布前核对完整报告名称和归属。补错标的、错日期和错误报告路径负例，断言错误行三个结果字段均为 `null`，另一标的的报告保持正确。 [状态与路径处理](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/ea49ffba50c43ea2def802bec21a70fac6f2c38a/src/tradingagents/enhancements/comparison.py#L214-L269)
+3. **P2 — 多行 Executive Summary 只保留首行。** 用上游 `render_pm_decision` 渲染两行结构化摘要，比较结果丢掉第二行的风险条件。A-IC-001 §3 要求提取摘要段并折叠空白。请在下一节之前提取完整摘要段，再折叠和截断。补连续多行、标题后换行及缺省摘要回退测试。 [摘要提取](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/ea49ffba50c43ea2def802bec21a70fac6f2c38a/src/tradingagents/enhancements/comparison.py#L176-L211)
+4. **P2 — 接受加密标的后使用股票分析管线。** 归一化测试明确接受 `btcusd` 并断言向 graph 传入 `BTC-USD`，同时把 `asset_type` 锁定为 `stock`。真实 `propagate` 依赖调用方显式选择 `crypto`。请和 D 确认 A 的资产范围。范围含加密标的时，应传递正确资产类型并增加混合资产离线测试。范围限于股票时，应在预检拒绝超范围标的并同步契约。 [现有测试](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/ea49ffba50c43ea2def802bec21a70fac6f2c38a/test/offline/test_comparison.py#L567-L580) · [上游 API](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/ea49ffba50c43ea2def802bec21a70fac6f2c38a/src/tradingagents/graph/trading_graph.py#L185-L208)
+
+### 验证与后续交付
+
+- Python 3.13.18 在隔离工作树运行 `PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -q --tb=line --disable-warnings`，结果为 **1562 passed、29 failed、1 skipped、1 deselected、100 subtests passed**。A 的 **30 项通过**。29 项均为基线已有的 C manifest/CLI 验收失败。两个远端测试作业的计数和失败归属一致，治理、Ruff、干净安装和 safety review 检查通过。 [PR CI](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45145996269) · [Push CI](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45145989349)
+- 本地治理检查 `--base 41e1b0b`、全仓 Ruff、治理脚本 mypy、`pip check` 和 PR 差异空白检查均通过。临时离线探针复现前 3 项中的异常、状态／报告错配和多行摘要问题，使用真实上游报告写入器的双成功对照通过。
+- 请补 `run_comparison` 的 Python 调用示例和相对路径解析说明，同步追踪矩阵与实际验证结果。A-IC-001 §7 记录了 A 确认的测试意图和 D 的角色。文档同时写有 D 已批准和书面测试待批准，请核对两项批准的实际会话引用并澄清状态。
+
+### 结论
+
+**CHANGES REQUIRED。** 请从当前 `main` 开后续修复 PR，先解决异常脱敏及结果归属校验，再补摘要和资产范围回归并重新送审。保留 C 的既有验收测试，随集成进度重跑完整 CI。
+
+## PR #6 · 第三轮复审 · 2026-11-23
+
+- PR：https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6
+- GitHub review：`CHANGES_REQUESTED`，https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6#pullrequestreview-6021522094
+- Reviewer：OpenCode；范围 FR-B、NFR-B、INV-B、INV-ASOF、BASE-01、GOV-01。
+- Head：`26bd176d5d6264c356a9cd48fd5de3784c8b8c38`；base：`c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`。
+- 本轮用户确认团队已批准固定语义评估集并测试通过；接受此确认。
+  29 项 C 基线失败及共享语义门禁均不作为要求 B 返工的依据。
+- 已确认 B 专项 CI 范围与 Ruff 修复；events.py 和 B 离线测试与上轮 blob 相同。
+  当前 head 的独立负例仍复现未来证据发布、每标的 6 条越限、schema 崩溃及空事件、
+  模型失败标为无共同事件、默认入口占位。评估 runner 的失败覆盖缺陷另行说明。
+- 本地 Python 3.13.18 全量：1601 passed、29 C-only failed、1 skipped、2 deselected、
+  100 subtests passed。Ruff、mypy、pip check、PR diff 检查通过；带 base 的治理检查
+  停在共享语义门禁。无真实模型调用；完成验证后回到原 main。
+- 完整反馈、源码行链接、CI 链接及验证记录见
+  [本轮审查记录](verification/pr6-review-003.md)。完整 TUI `/export` 待人工执行。
+
+**CHANGES REQUIRED。** 团队批准和 CI 归因已确认，但当前 head 的功能缺陷仍存在。
+
+## PR #6 · 第四轮复审 · 2026-11-23
+
+- PR：https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6
+- Head：`4a9afc4fc017ef9dbbd720ff86541491c06a99fd`；base：`c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`。
+- 简化验收项已基本落实：可注入核心范围已声明、B 专项 53 项通过、schema/失败状态/evidence 负例通过、评估失败覆盖门禁已增加。
+- 尚有一个 P1：`merge_once` 直接入口未检查各记录日期在窗口内。本轮复现未来日期和过期日期记录均能产生 `merged` 事件。
+- 全量 1615 passed、29 个 C-only failures、1 skipped、2 deselected、100 subtests；Ruff、mypy、pip check、diff check 通过。远端结果对齐。
+- GitHub review：`CHANGES_REQUESTED`，https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6#pullrequestreview-6022342508。完整记录：[PR #6 第四轮复审](verification/pr6-review-004.md)。
+
+**CHANGES REQUIRED。** 只需修复直接归并入口的日期窗口校验并增加负例，再针对最新 head 复审。
+
+## PR #8 · A 比较模块修复复审 · 2026-11-23
+
+- **仓库 / PR：** [sui-feng-cb/CS5351-TradingAgents #8](https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/8)
+- **审查人：** OpenCode，按用户请求复核 PR #7 的整改及相关回归。
+- **Base：** `main` / `c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`。
+- **Reviewed head：** `094e2a700f56144551261bfcabc5e15bff3efcac`；核对了本 PR 的两个提交及相对 base 的全部 7 文件 diff。
+- **范围：** FR-A、NFR-A、INV-A、SEC-01；依据 ADR-001、ADR-003 和 A-IC-001 draft-0.4 修订。
+- 主工作区保持在 `main` / `ed6a8c9`，在隔离工作树验证 PR head。本轮没有提交 GitHub 评论/review，也没有提交、推送或合并。
+
+### 上轮整改核对
+
+- **异常原文泄露已修复。** 分析/保存异常均映射为稳定代码和固定安全文案；新增测试检查返回值、Markdown 和 JSON 中无合成敏感标记，并保留另一标的报告。
+- **状态身份校验已生效。** 错 ticker、错日期会在保存前返回 `RESULT_IDENTITY_MISMATCH`，三个结果字段均为 `null`。直接返回 MSFT 报告目录或 `notes.md` 的原始负例也会被拒绝，但解析后的报告归属仍有下述缺口。
+- **多行摘要已修复。** 连续多行会提取至下一节，再折叠空白。补充离线探针确认标题后换行、空正文 fallback 及真实上游报告写入器的正常双股票路径均通过。
+- **stock-only 方向已明确，拒绝范围仍不完整。** `BTCUSD`、`EURUSD`、`GC=F`、`SPX500` 的预检拒绝对照通过；非美元 crypto 仍被接受。
+- Python 调用示例、相对路径说明及追踪矩阵已补充。draft-0.4 明确保留 D 对修订的确认要求，不能将本次代码审查视为该确认已发生。
+
+### 审查发现（按严重程度排序）
+
+1. **P1 — 报告归属校验先于路径解析，仍可发布另一 ticker 的报告。**
+   `run_one` 在原始 `saved_path` 上检查文件名和父目录前缀，随后 `_relative_report_path` 才执行 `resolve()`，并直接发布解析后的路径，没有重新检查归属。
+   离线通过 `run_comparison` 复现两种情况：
+   - `reports/AAPL_<stamp>` 是指向 `reports/MSFT_<stamp>` 的目录符号链接；AAPL 行仍为 `SUCCESS / Buy`，两行的 `report_path` 都变为 MSFT 的 `complete_report.md`。
+   - AAPL 目录里的 `complete_report.md` 是指向 MSFT `notes.md` 的文件符号链接；AAPL 行仍为 `SUCCESS`，公开路径直接变为 `reports/MSFT_<stamp>/notes.md`。
+   两种错误引用均进入返回值、比较 Markdown 和 manifest，违反 FR-A / INV-A。请对**最终发布的解析后路径**统一检查结果根、`reports/{精确 ticker}_{合法 stamp}/complete_report.md` 结构和归属，不能仅凭原始路径的字符串前缀通过。补目录链接、文件链接及正常路径对照；错误行应为 `FAILED`，评级/摘要/路径为 `null`，比较为 `PARTIAL`，另一标的报告及内容保留。
+   [原始路径检查](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/094e2a700f56144551261bfcabc5e15bff3efcac/src/tradingagents/enhancements/comparison.py#L299-L313) · [解析和发布路径](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/094e2a700f56144551261bfcabc5e15bff3efcac/src/tradingagents/enhancements/comparison.py#L249-L260)
+
+2. **P2 — stock-only 预检漏掉非美元计价的 crypto，仍沿用股票分析管线。**
+   `_is_stock_symbol` 只排除五种 crypto 后缀；`normalize_symbol` 不会将 `BTC-EUR`、`ETH-GBP`、`BTC-JPY` 转成这些后缀。这三个输入在离线正式入口中均被接受，graph 调用记录的 `asset_type` 均为 `stock`，并写出了成功比较工件，未实现 draft-0.4 的非股票预检拒绝约定。
+   请补齐受支持 ticker 语法下的非股票识别，或与 D 明确一个可确定验证的股票输入范围；不要仅补一个示例后缀。增加非美元 crypto 在两个输入位置的负例，断言 `UNSUPPORTED_ASSET_TYPE`、零 graph/save 调用和零比较工件，并保留合法股票符号的正例。
+   [资产预检](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/094e2a700f56144551261bfcabc5e15bff3efcac/src/tradingagents/enhancements/comparison.py#L139-L158) · [后缀集合](https://github.com/sui-feng-cb/CS5351-TradingAgents/blob/094e2a700f56144551261bfcabc5e15bff3efcac/src/tradingagents/enhancements/comparison.py#L41)
+
+### 代码、元数据与验证
+
+- 无新增运行时依赖；继续顺序复用上游两次分析及报告保存，无额外模型调用。比较 ID 和 UTC 生成时间、不可变结果及双工件派生方式保持原设计；C 的 `test_manifest.py` 相对 base 未改。
+- 本地使用 Python **3.13.18**。在隔离工作树设 `PYTHONPATH=src:.`，确保加载审查 head；下列 `<项目 Python>` 指主仓库 `.venv/bin/python`：
+
+  ```bash
+  PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest test/offline/test_comparison.py -q --tb=line --disable-warnings
+  PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -q --tb=line --disable-warnings
+  <项目 Python> scripts/check_governance.py --base c75bd9850daf89fcf6969972c1bc7b8e0c8f277e
+  <项目 Python> -m ruff check .
+  <项目 Python> -m mypy scripts/check_governance.py
+  <项目 Python> -m pip check
+  git diff --check c75bd9850daf89fcf6969972c1bc7b8e0c8f277e...HEAD
+  ```
+
+- **A 专项：38 passed。全量：1570 passed、29 failed、1 skipped、1 deselected、100 subtests passed。** 29 项全部属于已有 C manifest/CLI 未实现验收；没有新增的既有套件失败。治理、全仓 Ruff、治理脚本 mypy、`pip check` 和 PR 差异空白检查均通过；该 mypy 命令不覆盖 `comparison.py`。
+- 另用仓库外临时探针 `/tmp/opencode/test_pr8_review.py` 运行：`PYTHONPATH=src:. TZ=America/New_York <项目 Python> -m pytest -c pyproject.toml /tmp/opencode/test_pr8_review.py -q --tb=short --disable-warnings`，得到 **5 failed、6 passed**。5 个失败对应上述两种链接归属及三种非美元 crypto；6 个通过包括四种非股票拒绝对照、真实上游报告写入和摘要分支对照。这些是审查新增负例，不计入 PR 自带 38 项结果，未修改生产代码或正式测试。
+- 远端 [PR CI](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45183810386) 与 [Push CI](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45183800283) 的失败日志均为 **29 failed、1570 passed**，失败归属与本地一致。治理、全仓 Ruff、clean-install smoke 和 safety review 检查通过。PR 当前为 draft、`MERGEABLE / UNSTABLE`，无已提交的 GitHub review；不能据此宣称完整 CI 通过或已获批准。
+- 人工指令记录：用户要求本地落盘并提供可复制 Markdown，不代发回复；本轮遵守该边界。完整 TUI `/export` 无工具入口，待人工导出到 `transcripts/raw/` 后补实际链接；未合成 transcript。
+
+### 结论
+
+**CHANGES REQUIRED。** 上轮异常脱敏、状态身份与多行摘要的具体问题已修复，报告归属和资产范围仍存在可复现的边界遗漏。请修复上述 P1/P2 并补正式入口回归，在新 head 重新送审。29 项 C 基线红测不归因于 A；本轮返工依据是这两项独立复现的问题。
+
+## PR #6 · 第五轮复审 · 2026-11-23
+
+- PR：https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/6
+- Reviewed head：`771cf1a00c622fe05e98166dfba80909eab1e0e1`；base：`c75bd9850daf89fcf6969972c1bc7b8e0c8f277e`。
+- 仅复核第四轮提出的直接 `merge_once` 日期窗口问题。当前实现会在模型调用前拒绝未来、过期、缺失和非法日期，并保留窗口起止日合法输入；新增负例通过。
+- B 专项：56 passed；Ruff、治理脚本 mypy、pip check、diff check 通过。远端 B 专项通过。全量 29 项失败属 C manifest/CLI；safety review 停在共享语义门禁。
+- 本轮按用户要求**未向 GitHub 发布 comment 或 review**。完整验证见[本轮复审记录](verification/pr6-review-005.md)。TUI `/export` 待人工执行。
+
+**APPROVE。** 上一轮唯一未解决项已修复。此意见仅针对 PR 当前 head 的 B 代码审查范围，不代表全量 CI 全绿，也未执行合并。
+
 ## Future review records
 
 Every subsequent PR review must append a dated section using the same structure:
