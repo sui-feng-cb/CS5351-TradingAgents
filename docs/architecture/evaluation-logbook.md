@@ -128,4 +128,3 @@ None recorded — v1 of the single-LLM + deterministic-validator architecture.
 - `precision = 1.0`：模型从不把「不同事件」强行归并（INV-B-4 达成）。
 - `recall = 0.727`：达到阈值；剩余 3 个漏报均为「共享同一原因但不同主体的独立实例」（模型偏保守，属真实模型行为而非标注错误）。
 - 重新标注后 s12（Google 撤销投诉 vs 微软受查）已正确标为 different，模型判断一致。
-

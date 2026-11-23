@@ -87,7 +87,6 @@ def _article(i: int, ticker: str | None = None) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.offline
 def test_build_window_two_tickers_success():
     """FR-B-1: 2 tickers within a 7-day window succeed."""
     start, end = build_window(["AAPL", "MSFT"], "2026-11-22", 7)
@@ -95,7 +94,6 @@ def test_build_window_two_tickers_success():
     assert end == "2026-11-22"
 
 
-@pytest.mark.offline
 def test_build_window_three_tickers_success():
     """FR-B-1: 3 tickers succeed."""
     start, end = build_window(["AAPL", "MSFT", "TSLA"], "2026-11-22", 1)
@@ -103,28 +101,24 @@ def test_build_window_three_tickers_success():
     assert end == "2026-11-22"
 
 
-@pytest.mark.offline
 def test_build_window_one_ticker_fails():
     """FR-B-1: a single ticker is rejected."""
     with pytest.raises(ValueError):
         build_window(["AAPL"], "2026-11-22", 7)
 
 
-@pytest.mark.offline
 def test_build_window_four_tickers_fail():
     """FR-B-1: more than 3 tickers are rejected."""
     with pytest.raises(ValueError):
         build_window(["AAPL", "MSFT", "TSLA", "NVDA"], "2026-11-22", 7)
 
 
-@pytest.mark.offline
 def test_build_window_lookback_greater_than_seven_fails():
     """FR-B-1: a look-back window longer than 7 days is rejected."""
     with pytest.raises(ValueError):
         build_window(["AAPL", "MSFT"], "2026-11-22", 8)
 
 
-@pytest.mark.offline
 def test_build_window_lookback_zero_fails():
     """FR-B-1: a look-back window shorter than 1 day is rejected."""
     with pytest.raises(ValueError):
@@ -136,7 +130,6 @@ def test_build_window_lookback_zero_fails():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.offline
 def test_fetch_records_truncated_to_five_per_ticker():
     """FR-B-2: a vendor returning 20 records is truncated to <=5 per ticker."""
 
@@ -151,7 +144,6 @@ def test_fetch_records_truncated_to_five_per_ticker():
     assert len(result) == 2 * MAX_RECORDS_PER_TICKER
 
 
-@pytest.mark.offline
 def test_fetch_records_evidence_ids_assigned_and_unique():
     """FR-B-2 / NFR-B-1: every record gets a run-unique evidence ID."""
 
@@ -166,7 +158,6 @@ def test_fetch_records_evidence_ids_assigned_and_unique():
         assert f"-{record.ticker}-" in record.evidence_id
 
 
-@pytest.mark.offline
 def test_fetch_records_fields_complete():
     """FR-B-2: title/snippet/source/date/pub_date are all populated."""
 
@@ -183,7 +174,6 @@ def test_fetch_records_fields_complete():
         assert record.pub_date
 
 
-@pytest.mark.offline
 def test_fetch_records_empty_fetcher():
     """FR-B-6: a fetcher returning nothing yields an empty record list."""
 
@@ -194,7 +184,6 @@ def test_fetch_records_empty_fetcher():
     assert result == []
 
 
-@pytest.mark.offline
 def test_fetch_records_normalizes_upstream_shape():
     """FR-B-2: the upstream (summary/publisher/datetime) shape is normalised."""
 
@@ -222,7 +211,6 @@ def test_fetch_records_normalizes_upstream_shape():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.offline
 def test_registry_issue_canonical_id_format():
     """FR-B-2: evidence_id == ev-{run_id}-{ticker}-{seq}."""
     registry = EvidenceRegistry(run_id="a1b2c3d4")
@@ -231,7 +219,6 @@ def test_registry_issue_canonical_id_format():
     assert record.ticker == "AAPL"
 
 
-@pytest.mark.offline
 def test_registry_issue_sequence_increments_per_ticker():
     """FR-B-2: seq is 0-based and increments within the same ticker."""
     registry = EvidenceRegistry(run_id="a1b2c3d4")
@@ -241,7 +228,6 @@ def test_registry_issue_sequence_increments_per_ticker():
     assert second.evidence_id == "ev-a1b2c3d4-AAPL-1"
 
 
-@pytest.mark.offline
 def test_registry_issue_ids_unique_within_run():
     """NFR-B-1: every issued ID is unique across tickers within one run."""
     registry = EvidenceRegistry()
@@ -253,7 +239,6 @@ def test_registry_issue_ids_unique_within_run():
     assert seen == registry.issued_ids
 
 
-@pytest.mark.offline
 def test_registry_resolve_known_and_unknown():
     """FR-B-2 / INV-B-3: resolve maps issued IDs to records; unknown -> None."""
     registry = EvidenceRegistry(run_id="a1b2c3d4")
@@ -263,7 +248,6 @@ def test_registry_resolve_known_and_unknown():
     assert registry.resolve("ev-other-AAPL-0") is None
 
 
-@pytest.mark.offline
 def test_registry_run_ids_distinct_across_runs():
     """NFR-B-2: two runs get different run_ids, so IDs never cross runs."""
     registry_a = EvidenceRegistry()
@@ -272,7 +256,6 @@ def test_registry_run_ids_distinct_across_runs():
     assert registry_a.issued_ids.isdisjoint(registry_b.issued_ids)
 
 
-@pytest.mark.offline
 def test_registry_register_prebuilt_record():
     """FR-B-2: a pre-built NewsRecord can be registered and resolved."""
     registry = EvidenceRegistry(run_id="a1b2c3d4")
@@ -293,7 +276,6 @@ def test_registry_register_prebuilt_record():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.offline
 def test_merge_once_single_llm_call(records):
     """FR-B-3 / INV-B-1: exactly one LLM call, receiving the full record set."""
     records_list, aapl, msft, tsla = records
@@ -311,7 +293,6 @@ def test_merge_once_single_llm_call(records):
         assert record.evidence_id in prompt
 
 
-@pytest.mark.offline
 def test_merge_once_legal_merge_accepted(records):
     """FR-B-4: a two-ticker event with valid evidence is returned verbatim."""
     records_list, aapl, msft, tsla = records
@@ -328,7 +309,6 @@ def test_merge_once_legal_merge_accepted(records):
     assert [r.evidence_id for r in result.unmerged] == [tsla.evidence_id]
 
 
-@pytest.mark.offline
 def test_merge_once_llm_raises_fail_closed(records):
     """RP-B: an LLM exception fails closed — no verified facts emitted."""
     records_list, aapl, msft, tsla = records
@@ -342,7 +322,6 @@ def test_merge_once_llm_raises_fail_closed(records):
     assert {r.evidence_id for r in result.unmerged} == {r.evidence_id for r in records_list}
 
 
-@pytest.mark.offline
 def test_merge_once_json_parse_failure_fail_closed(records):
     """RP-B: unparseable output fails closed — no events emitted."""
     records_list, aapl, msft, tsla = records
@@ -355,7 +334,6 @@ def test_merge_once_json_parse_failure_fail_closed(records):
     assert result.events == []
 
 
-@pytest.mark.offline
 def test_merge_once_no_records_data_unavailable():
     """FR-B-6: empty records -> data_unavailable, no LLM call."""
     calls = []
@@ -370,7 +348,6 @@ def test_merge_once_no_records_data_unavailable():
     assert calls == []
 
 
-@pytest.mark.offline
 def test_merge_once_records_but_no_events_no_common_event(records):
     """FR-B-6: records exist but no common event -> no_common_event."""
     records_list, aapl, msft, tsla = records
@@ -392,7 +369,6 @@ def test_merge_once_records_but_no_events_no_common_event(records):
     assert result.events == []
 
 
-@pytest.mark.offline
 def test_merge_once_forged_id_removed(records):
     """FR-B-7 / NFR-B-2: a forged evidence ID is dropped, never verified."""
     records_list, aapl, msft, tsla = records
@@ -424,7 +400,6 @@ def test_merge_once_forged_id_removed(records):
     assert dropped[0].reason == "forged_or_cross_run_id"
 
 
-@pytest.mark.offline
 def test_inv_b1_second_call_forbidden(records):
     """INV-B-1 (violation -> fails): a second LLM call raises, test fails."""
     records_list, aapl, msft, tsla = records
@@ -441,7 +416,6 @@ def test_inv_b1_second_call_forbidden(records):
     assert len(calls) == 1
 
 
-@pytest.mark.offline
 def test_inv_b4_insufficient_evidence_not_forced(records):
     """INV-B-4 (violation -> fails): a single-record event is not emitted."""
     records_list, aapl, msft, tsla = records
@@ -471,7 +445,6 @@ def test_inv_b4_insufficient_evidence_not_forced(records):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.offline
 def test_validate_valid_grouping_accepted(reg):
     """FR-B-4/5/7: a two-ticker event with matching claims survives."""
     registry, aapl, msft, tsla = reg
@@ -495,7 +468,6 @@ def test_validate_valid_grouping_accepted(reg):
     assert [r.evidence_id for r in result.unmerged] == [tsla.evidence_id]
 
 
-@pytest.mark.offline
 def test_validate_forged_evidence_id_dropped(reg):
     """FR-B-7 / NFR-B-2: an ID not issued this run is dropped, never output."""
     registry, aapl, msft, tsla = reg
@@ -520,7 +492,6 @@ def test_validate_forged_evidence_id_dropped(reg):
     assert forged not in out_ids
 
 
-@pytest.mark.offline
 def test_validate_mismatched_ticker_dropped(reg):
     """FR-B-7: a claim whose ticker disagrees with the record is dropped."""
     registry, aapl, msft, tsla = reg
@@ -542,7 +513,6 @@ def test_validate_mismatched_ticker_dropped(reg):
     assert result.status is MergeStatus.NO_COMMON_EVENT
 
 
-@pytest.mark.offline
 def test_validate_mismatched_date_dropped(reg):
     """FR-B-7: a claim whose date disagrees with the record is dropped."""
     registry, aapl, msft, tsla = reg
@@ -563,7 +533,6 @@ def test_validate_mismatched_date_dropped(reg):
     assert result.events == []
 
 
-@pytest.mark.offline
 def test_validate_mismatched_source_dropped(reg):
     """FR-B-7: a claim whose source disagrees with the record is dropped."""
     registry, aapl, msft, tsla = reg
@@ -583,7 +552,6 @@ def test_validate_mismatched_source_dropped(reg):
     assert dropped[0].reason == "source_mismatch"
 
 
-@pytest.mark.offline
 def test_validate_cross_run_id_dropped():
     """NFR-B-2: an ID issued by another run is rejected as non-resolvable."""
     registry = EvidenceRegistry(run_id="runA")
@@ -607,7 +575,6 @@ def test_validate_cross_run_id_dropped():
     assert dropped[0].reason == "forged_or_cross_run_id"
 
 
-@pytest.mark.offline
 def test_validate_single_ticker_event_degraded():
     """FR-B-5: an event backed by a single distinct ticker is degraded."""
     registry = EvidenceRegistry(run_id="run123")
@@ -629,7 +596,6 @@ def test_validate_single_ticker_event_degraded():
     assert result.status is MergeStatus.NO_COMMON_EVENT
 
 
-@pytest.mark.offline
 def test_validate_resolution_rate_100_percent(reg):
     """NFR-B-1: every output evidence ID resolves back to a record."""
     registry, aapl, msft, tsla = reg
@@ -648,7 +614,6 @@ def test_validate_resolution_rate_100_percent(reg):
         assert registry.resolve(item.evidence_id) is not None
 
 
-@pytest.mark.offline
 def test_validate_forged_and_cross_run_count_zero(reg):
     """NFR-B-2: forged / cross-run IDs never leak into verified output (== 0)."""
     registry, aapl, msft, tsla = reg
@@ -687,7 +652,6 @@ def test_validate_forged_and_cross_run_count_zero(reg):
     assert len(result.events) == 1
 
 
-@pytest.mark.offline
 def test_inv_b2_single_ticker_event_degraded(reg):
     """INV-B-2 (violation -> fails): a single-ticker event must be degraded."""
     registry, aapl, msft, tsla = reg
@@ -705,7 +669,6 @@ def test_inv_b2_single_ticker_event_degraded(reg):
     assert aapl.evidence_id in {r.evidence_id for r in result.unmerged}
 
 
-@pytest.mark.offline
 def test_inv_b3_forged_and_mismatched_rejected(reg):
     """INV-B-3 (violation -> fails): forged / mismatched claims must be dropped."""
     registry, aapl, msft, tsla = reg
@@ -728,7 +691,6 @@ def test_inv_b3_forged_and_mismatched_rejected(reg):
     assert "ev-run123-NOPE-0" not in out_ids
 
 
-@pytest.mark.offline
 def test_inv_b5_model_claims_cannot_override_authoritative_values(reg):
     """INV-B-5 (violation -> fails): final evidence uses record values, not model claims."""
     registry, aapl, msft, tsla = reg
@@ -747,7 +709,6 @@ def test_inv_b5_model_claims_cannot_override_authoritative_values(reg):
     assert by_id[aapl.evidence_id].source == "Reuters"
 
 
-@pytest.mark.offline
 def test_inv_b5_wrong_claim_rejected_not_adopted(reg):
     """INV-B-5 (violation -> fails): a wrong claim is rejected, never adopted."""
     registry, aapl, msft, tsla = reg

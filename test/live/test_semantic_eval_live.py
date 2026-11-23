@@ -17,7 +17,6 @@ Definitions are frozen in ``docs/architecture/evaluation-table.md`` §3:
 If the gate fails, the test (or ``__main__``) exits non-zero, so this file also
 doubles as the CI live semantic-evaluation step.
 
-This is a ``@pytest.mark.live`` test: it requires ``DEEPSEEK_API_KEY`` in the
 environment and network access. It is never run by the default offline CI.
 """
 
@@ -32,7 +31,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.live
 
 from openai import OpenAI  # noqa: E402
 
@@ -276,7 +274,6 @@ def _assert_gate(metrics: LiveMetrics) -> None:
         )
 
 
-@pytest.mark.live
 def test_live_semantic_eval_gate():
     """NFR-B-3: real-model pairwise precision >= 0.80 and recall >= 0.70."""
     pairs = load_pairs()
@@ -291,6 +288,6 @@ if __name__ == "__main__":
         _assert_gate(metrics)
     except AssertionError as exc:
         print(f"live semantic eval gate FAILED: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
     print("live semantic eval gate: OK")
     raise SystemExit(0)

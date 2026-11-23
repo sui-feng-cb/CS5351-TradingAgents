@@ -28,9 +28,10 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable
+from typing import Any
 
 __all__ = [
     "MAX_RECORDS_PER_TICKER",
