@@ -287,3 +287,12 @@ entries:
     validation: "test/offline/test_events.py 53 passed；ruff check . 通过；git diff --check 通过。"
     feature_status: "四类功能问题已修复并补 14 个负例；默认入口明确为可注入核心组件（FR-B 完整集成待团队接入 data layer 结构化新闻 API）。"
     transcript_status: "active-session TUI export pending"
+  - id: B-EVENTS-IMPL-003
+    scope: fr-b-nfr-b-review-fix-round-4-date-window
+    agent: OpenCode
+    requirements: [FR-B, NFR-B]
+    user_direction: "成员 B 要求按 PR #6 第四轮复审修复 merge_once 入口的日期窗口校验：校验每条记录 record.date 存在、可解析、且在窗口内，未来/过期/缺失/畸形日期均拒绝。"
+    files: [src/tradingagents/enhancements/events.py, test/offline/test_events.py]
+    validation: "test/offline/test_events.py 56 passed；ruff check . 通过。"
+    feature_status: "merge_once 统一入口已校验记录日期窗口，未来/过期/缺失/畸形日期均拒绝；新增 3 个负例。"
+    transcript_status: "active-session TUI export pending"

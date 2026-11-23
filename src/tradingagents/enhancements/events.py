@@ -476,13 +476,13 @@ def _default_fetcher(ticker: str, start: str, end: str) -> list[dict]:
     )
 
 
-def _parse_record_date(value: str) -> _dt.date | None:
+def _parse_record_date(value: str | None) -> _dt.date | None:
     """Parse a normalized ``YYYY-MM-DD`` date, or ``None`` when absent/malformed."""
     if not value:
         return None
     try:
         return _dt.date.fromisoformat(value)
-    except ValueError:
+    except (ValueError, TypeError):
         return None
 
 
@@ -652,6 +652,9 @@ def _validate_merge_input(
     * the window spans at most 7 days (and ``window_end >= window_start``);
     * every record's evidence ID belongs to this run (NFR-B-2) and its ticker is
       one of the input tickers;
+    * every record's ``date`` is present, parseable as ``YYYY-MM-DD``, and falls
+      inside the window (``window_start <= date <= window_end``) — so future,
+      stale and undated records are rejected before they can reach a merged event;
     * at most ``MAX_RECORDS_PER_TICKER`` records per ticker.
     """
     if not isinstance(tickers, (list, tuple)):
@@ -681,6 +684,12 @@ def _validate_merge_input(
         if record.ticker not in ticker_set:
             raise ValueError(
                 f"record {record.evidence_id!r} ticker {record.ticker!r} not in {sorted(ticker_set)}"
+            )
+        record_date = _parse_record_date(record.date)
+        if record_date is None or not (start <= record_date <= end):
+            raise ValueError(
+                f"record {record.evidence_id!r} date {record.date!r} not within "
+                f"window {window_start!r}..{window_end!r}"
             )
         per_ticker[record.ticker] = per_ticker.get(record.ticker, 0) + 1
 
@@ -817,7 +826,7 @@ def merge_once(
 
     Failure behaviour:
       - invalid inputs (ticker count, window span, record ownership, per-ticker
-        count)            -> ``ValueError`` (input-level, before any LLM call)
+        count, record date) -> ``ValueError`` (input-level, before any LLM call)
       - no records          -> ``data_unavailable`` (no LLM call)
       - ``llm`` raises / output unparseable or malformed
                             -> ``analysis_incomplete`` (reason preserved, fail-closed)

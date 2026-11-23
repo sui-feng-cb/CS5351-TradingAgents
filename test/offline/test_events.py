@@ -594,6 +594,51 @@ def test_merge_once_rejects_more_than_five_records_per_ticker(records):
         merge_once([aapl, msft, tsla, *extra], TICKERS, WINDOW, llm=llm)
 
 
+def test_merge_once_rejects_future_dated_record():
+    """FR-B-1: a future-dated record is rejected before any LLM call."""
+    registry = EvidenceRegistry(run_id="run123")
+    aapl = registry.issue("AAPL", "2026-11-23", "Reuters", "future Apple record")
+    msft = registry.issue("MSFT", "2026-11-20", "Bloomberg", "in-window Microsoft record")
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once([aapl, msft], TICKERS, WINDOW, llm=llm)
+
+
+def test_merge_once_rejects_stale_record_before_window():
+    """FR-B-1: a record dated before the window is rejected before any LLM call."""
+    registry = EvidenceRegistry(run_id="run123")
+    aapl = registry.issue("AAPL", "2026-11-01", "Reuters", "stale Apple record")
+    msft = registry.issue("MSFT", "2026-11-20", "Bloomberg", "in-window Microsoft record")
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once([aapl, msft], TICKERS, WINDOW, llm=llm)
+
+
+def test_merge_once_rejects_missing_date_record():
+    """FR-B-1: a record with no date is rejected before any LLM call."""
+    registry = EvidenceRegistry(run_id="run123")
+    aapl = registry.issue("AAPL", "2026-11-20", "Reuters", "dated Apple record")
+    undated = NewsRecord(
+        evidence_id="ev-run123-MSFT-0",
+        ticker="MSFT",
+        date="",
+        source="Bloomberg",
+        title="undated Microsoft record",
+    )
+
+    def llm(prompt):
+        raise AssertionError("LLM must not be called for invalid input")
+
+    with pytest.raises(ValueError):
+        merge_once([aapl, undated], TICKERS, WINDOW, llm=llm)
+
+
 # ---------------------------------------------------------------------------
 # validate (FR-B-5/7, NFR-B-1/2, INV-B-2/3/5)
 # ---------------------------------------------------------------------------
