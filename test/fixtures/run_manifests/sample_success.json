@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "run_id": "3f9a1c2e-8b4d-4e6f-9a0b-1c2d3e4f5a6b",
+  "ticker": "AAPL",
+  "asset_type": "stock",
+  "trade_date": "2026-11-20",
+  "as_of": "2026-11-20",
+  "started_at": "2026-11-20T14:00:00Z",
+  "finished_at": "2026-11-20T14:12:30Z",
+  "code_version": "0.7.1",
+  "analysts": ["market", "news", "fundamentals", "social"],
+  "models": {
+    "deep": {"provider": "openai", "model": "gpt-5"},
+    "quick": {"provider": "openai", "model": "gpt-5-mini"}
+  },
+  "configured_data_vendors": {
+    "core_stock_apis": "yfinance",
+    "technical_indicators": "yfinance",
+    "fundamental_data": "yfinance",
+    "news_data": "yfinance"
+  },
+  "status": "succeeded",
+  "reports": {
+    "complete_report_md": "reports/complete_report.md",
+    "complete_report_html": "reports/complete_report.html"
+  },
+  "error": null,
+  "unknown_fields": []
+}

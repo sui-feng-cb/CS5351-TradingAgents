@@ -19,6 +19,35 @@ safety review and integration review remain pending.
 - C: versioned manifest records run ID, ticker, date/as-of, start/end, available
   code version, configured providers/models/analysts, status and relative paths.
   Unknowns are explicit. Query is read-only and tolerates individual bad files.
+  Storage is one `run_manifest.json` per run directory plus a read-only local
+  scan (not a shared index). Contract below is a tests-first proposal awaiting
+  non-C approval (`docs/testing/c-manifest-test-plan.md`).
+
+  ### C manifest v1 proposal
+
+  - One manifest per execution attempt; `run_id` is a fresh UUID per attempt.
+  - Frozen field whitelist: schema_version, run_id, ticker, asset_type,
+    trade_date, as_of, started_at, finished_at, code_version, analysts, models,
+    configured_data_vendors, status, reports, error, unknown_fields. Extra
+    top-level keys are rejected.
+  - `status` is `running | succeeded | failed`; analysis outcome and report-save
+    outcome are expressed separately, not as one overloaded field.
+  - UTC-aware ISO-8601 timestamps; `trade_date`/`as_of` remain `YYYY-MM-DD`.
+  - `models` validates per-tier provider/model; `configured_data_vendors` is the
+    source configuration, not per-request provenance.
+  - Errors store a fixed code plus safe text; no traceback blob, no secret.
+  - `reports` paths are relative to the results root and are the paths
+    `save_reports` actually returned; a skipped save is `null`; a reused custom
+    save path updates the existing record by explicit run association (team
+    confirmation pending).
+  - Query is read-only; bad JSON, unknown schema_version, missing declared
+    reports and out-of-root paths each warn and the scan continues; no report is
+    modified or deleted. A missing-manifest warning is only for recognizable run
+    directories.
+  - Same-day reruns and checkpoint resumes keep prior records and do not change
+    existing checkpoint behavior.
+  - Team-confirmation items not yet locked: A/Python run-association interface,
+    backtest coverage, and the reused-custom-path policy.
 - D: market execution status and snapshot date are machine metadata, not inferred
   from model text. The proposed public mode is `standard` (default; preserve
   upstream behavior) or `team` (apply the qualification gate). A team-mode run

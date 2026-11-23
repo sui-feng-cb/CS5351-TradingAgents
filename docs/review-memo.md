@@ -283,13 +283,254 @@ CommonMark 解析现在保留真实换行的源位置，并屏蔽行内代码消
 
 **APPROVE**。上一轮发现已修复，新增加的评级来源与硬换行回归通过，FR-D/NFR-D/INV-D 范围内未发现其他阻塞问题。此结论限于上述 PR head 的代码复审。
 
+## PR #5 · C manifest/query tests-first review · 2026-11-23
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **URL:** https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/5
+- **Reviewer:** OpenCode，按用户请求进行只读代码/测试审查
+- **Base:** `main` / `ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f`
+- **Reviewed head:** `C` / `64f7bec36e91b83f976708ff5310966530596010`
+- **Scope:** tests-and-docs-only pre-implementation contract for FR-C, NFR-C,
+  SEC-01 and GOV-01. The PR contains no `src/tradingagents/enhancements/manifest.py`
+  implementation and no CLI manifest command.
+
+### Alignment and review boundary
+
+The proposed API, v1 field list, per-run storage model, local read-only query,
+warning-and-continue behavior, secret exclusion and versioned benchmark dataset
+are aligned with FR-C/NFR-C, the C section of
+`docs/architecture/interface-contracts.md`, INV-SECRET, ADR-001 and the C test
+plan. Keeping application code out of this head is correct for the tests-first
+stage. The 20 C failures are therefore expected reds and are not treated as
+implementation defects.
+
+The test contract is not yet strong enough for implementation or final approval.
+The following findings are ordered by severity.
+
+### Findings
+
+1. **P1 — The unsafe-report-path test does not prove that an escaping path is
+   not followed.** `test/offline/test_manifest.py:550-575` checks the returned
+   ticker list, warning text and the returned match paths, but never observes
+   access to `outside_secret.md`. An implementation can read the out-of-root
+   file, then discard the record and return the expected AAPL match, and the
+   test still passes. A review-only probe did exactly that and passed the test.
+   Also, the declared `../../../outside_secret.md` does not resolve to the
+   fixture file when resolved from the results root as the contract requires;
+   `../outside_secret.md` would. Correct the fixture path and instrument the
+   outside target (or use a failing read/open sentinel), asserting that no
+   out-of-root file is opened while valid records and warnings remain checked.
+
+2. **P1 — The CLI read-only contract is not tested.**
+   `test/offline/test_manifest.py:582-612` checks exit status and output only;
+   it does not snapshot the manifest/report bytes, modification times, or
+   directory entries before and after the query. A command that overwrites the
+   referenced report still passed the current test in a review-only probe. Add
+   before/after content and filesystem-operation assertions, including that a
+   query cannot write, delete, rename or rewrite a manifest/report.
+
+3. **P2 — The schema tests do not test rejection of malformed records.**
+   `test/offline/test_manifest.py:99-110` only validates the two fixed positive
+   samples; the sole negative schema case at `:126-133` changes `status`.
+   Consequently, a `validate_manifest` implementation that accepts extra or
+   missing top-level fields, a non-UUID `run_id`, malformed dates/timestamps, or
+   invalid `reports`/`error` shapes can still satisfy this suite. This does not
+   independently enforce the frozen whitelist and type rules in
+   `docs/architecture/interface-contracts.md:25-40` and
+   `docs/testing/c-manifest-test-plan.md:25-47`. Add literal negative cases for
+   at least an unknown key, a missing required key, malformed UUID/date/time,
+   and invalid report/error shape; assert `ValueError` (or the approved public
+   validation exception) for each. A review-only mutation probe confirmed that
+   both fixed-sample tests pass with a no-op validator.
+
+4. **P2 — Failed-run error-code and safe-message requirements are not asserted.**
+   `test/offline/test_manifest.py:347-355` checks only that a file exists and
+   has `status == "failed"`; it does not check the required fixed error code,
+   safe message, or absence of traceback text. The test-plan row at
+   `docs/testing/c-manifest-test-plan.md:73-75` explicitly requires those
+   properties, and the interface contract forbids traceback blobs. A fake
+   manifest containing only `{"status": "failed"}` passed the current test
+   in review. Assert the exact approved error code, a safe bounded message, and
+   that exception details/credential values are absent.
+
+5. **P2 — CLI filter wiring is under-tested.** The only real Typer invocation,
+   `test/offline/test_manifest.py:605-612`, passes `--ticker` and does not pass
+   `--date`; the date and combined-filter cases at `:443-464` call the Python
+   query function directly. A CLI implementation that ignores `--date` or
+   mishandles the combined filter can therefore pass the current tests despite
+   violating FR-C (`docs/reference/project-requirements.md:59`). Add real CLI
+   invocations for ticker-only, date-only, combined and no-match filters, and
+   assert warning rendering for a bad record.
+
+6. **P2 — Successful report-path integration is not covered.** The direct
+   writer test at `test/offline/test_manifest.py:140-151` uses `_write_manifest`
+   rather than the CLI/report-save lifecycle. The only successful end-to-end
+   rerun at `:395-413` disables report saving, so it checks only two null report
+   paths. No test proves that a successful saved report records the exact paths
+   returned by `save_reports`, relative to the results root, as required by
+   `docs/architecture/interface-contracts.md:34-36`. Add a successful CLI run
+   with saving enabled and assert both the on-disk report and manifest paths.
+
+### Code/test quality, operational metadata and verification
+
+- The test module has independent stdlib-written malformed/unknown-version and
+  traversal fixtures, explicit negative status coverage, same-day rerun coverage,
+  and a deterministic 1,000-manifest generator. The generator's byte-stable
+  design and the benchmark's three fresh subprocesses are good foundations for
+  NFR-C.
+- NFR-C is correctly left unclaimed: the 2-second threshold is still proposed,
+  and no implementation-phase timing result is present. The benchmark tool
+  returns failure against the absent command, which is baseline evidence rather
+  than a performance pass.
+- No runtime dependency, credential, live API call or upstream production module
+  was added by this PR. The remote PR has no submitted reviews; the documented
+  independent final review remains pending and is not replaced by this local
+  memo. ADR-003 makes a same-PR `Test-Plan-Approved` marker advisory; its absence
+  is not a finding. Required human plan/test approval before application code
+  remains separate.
+- `docs/verification/c-manifest.md:108-123` predates the merge from main and
+  describes D as absent. The current checkout has the D implementation and all
+  existing tests pass. Append the current-head results and PR metadata to avoid
+  presenting that historical baseline as the present branch state.
+
+### Verification evidence
+
+- `TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings`:
+  **1532 passed, 20 failed, 1 skipped, 1 deselected, 100 subtests passed**.
+  All 20 failures are the expected missing C module/CLI acceptance reds.
+- `.venv/bin/python scripts/check_governance.py --base
+  ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f`: passed.
+- `.venv/bin/python -m ruff check .`: passed.
+- `.venv/bin/python -m mypy scripts/check_governance.py`: passed.
+- `.venv/bin/python -m pip check`: passed.
+- `git diff --check main...HEAD`: passed.
+- GitHub PR metadata at review time: head `64f7bec`; governance, safety review,
+  Ruff and clean-install checks passed; both Python 3.13 test jobs failed only
+  on the expected unimplemented C tests. Both job logs report 20 failed and
+  1532 passed, with no non-C failures. Read-only commands used:
+  `gh pr view 5 --repo sui-feng-cb/CS5351-TradingAgents --json number,url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,isDraft,state,reviews,statusCheckRollup`,
+  `gh run view 45057579345 --job 137316120880 --repo sui-feng-cb/CS5351-TradingAgents --log-failed`
+  and `gh run view 45057575170 --job 137316108076 --repo sui-feng-cb/CS5351-TradingAgents --log-failed`.
+  No GitHub review was submitted.
+- Review-only mutation probes were run from a temporary test file and removed
+  afterward; they produced evidence for findings 1–4 and did not modify
+  production code or the PR test suite.
+
+### Decision
+
+**CHANGES REQUIRED.** This is a useful tests-first foundation and correctly
+defers application implementation, but the current contract leaves schema
+validation, failed-run sanitization, path containment, CLI read-only behavior,
+and CLI filter wiring insufficiently protected. Resolve the two P1 safety-test
+gaps and the P2 acceptance-contract gaps before approving the C test plan or using
+it as the implementation acceptance boundary. This local conclusion is not a
+GitHub approval, merge authorization or approval of the future application
+implementation.
+
+## PR #5 re-review · C manifest/query tests-first corrections · 2026-11-23
+
+- **Repository:** `sui-feng-cb/CS5351-TradingAgents`
+- **URL:** https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/5
+- **Reviewer:** OpenCode, re-review requested by the user
+- **Base:** `main` / `ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f`
+- **Previously reviewed head:** `64f7bec36e91b83f976708ff5310966530596010`
+- **Reviewed head:** `677e9f396e9ae3498d218a42d1a49f1e8270af48`
+- **Scope:** tests-and-docs-only corrections for FR-C, NFR-C and SEC-01.
+  No manifest application module or CLI implementation was added.
+
+### Previous findings rechecked
+
+The changes at `677e9f3` address the six findings from the prior review:
+
+1. The unsafe path is now `../outside_secret.md` relative to `results_root`; the
+   test asserts the resolved target and uses `_OpenSpy` to fail if the external
+   report is opened (`test/offline/test_manifest.py:854-889`).
+2. The CLI query test snapshots files/directories and instruments write, delete,
+   rename, replace and copy operations under the results root
+   (`test/offline/test_manifest.py:165-285, 920-936`).
+3. Eight schema-negative variants cover invalid status, extra/missing fields,
+   UUID, date, naive timestamp and invalid reports/error structures
+   (`test/offline/test_manifest.py:319-342`).
+4. The failed-run test checks the candidate fixed code/message and rejects raw
+   exception text and traceback details (`test/offline/test_manifest.py:618-635`).
+5. New real Typer invocations check ticker, date, combined and no-match queries,
+   parse JSON stdout, and require a corrupt manifest warning
+   (`test/offline/test_manifest.py:939-1024`).
+6. A successful CLI save test checks a non-default report returned by
+   `save_reports` is what the manifest records, relative to the results root
+   (`test/offline/test_manifest.py:454-482, 638-658`).
+
+The updated verification log distinguishes this 29-test baseline from the
+previous 20-test snapshot and labels the old D baseline as historical.
+
+### CI failures and impact
+
+Both failed checks are the same test-suite failure on the same head SHA, triggered
+twice by GitHub events:
+
+- `pull_request`: [run 45119343357](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45119343357)
+- `push`: [run 45119338252](https://github.com/sui-feng-cb/CS5351-TradingAgents/actions/runs/45119338252)
+
+Each reports **29 failed, 1532 passed, 1 skipped, 1 deselected, 100 subtests
+passed**. All 29 failures are in `test/offline/test_manifest.py` and result from
+the tests-first state: `tradingagents.enhancements.manifest` is not implemented,
+the `manifest query` CLI command is absent (`No such command 'manifest'`), and
+the real CLI success/failure cases consequently find no `run_manifest.json`.
+There are no failures in the pre-existing non-C test suite. Governance,
+`safety review`, Ruff and `clean-install smoke` passed in both runs.
+
+These are expected C acceptance reds, not an unrelated regression. They are still
+material to merge readiness: the required test status is red, so the PR cannot
+be merged while that check is required. Do not suppress or skip the new tests;
+after implementation lands, rerun the full suite and require these 29 to pass.
+
+### Remaining non-blocking contract/documentation notes
+
+1. `docs/testing/c-manifest-test-plan.md:12` still says the suite has 20 cases;
+   this head collects 29. Update the count for accuracy.
+2. The CLI JSON envelope and fixed `analysis_failed` / `Analysis failed.` values
+   are explicitly described as pending human/team confirmation, although tests
+   currently assert them. Confirm these proposed public values before C
+   implementation; this review does not silently freeze them.
+3. NFR-C's proposed 2-second target remains pending approval and has not been
+   measured against an implemented query.
+
+### Verification evidence
+
+- Current-head local full suite, run with Python 3.13.18 and
+  `TZ=America/New_York`: **29 failed, 1532 passed, 1 skipped, 1 deselected,
+  100 subtests passed**. Failures were all the expected absent C implementation
+  and CLI acceptance cases.
+- `.venv/bin/python -m ruff check .`: passed.
+- `.venv/bin/python scripts/check_governance.py --base
+  ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f`: passed.
+- `.venv/bin/python -m mypy scripts/check_governance.py`: passed.
+- `.venv/bin/python -m pip check`: passed.
+- `git diff --check ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f...HEAD`: passed.
+- PR metadata confirms head `677e9f396e9ae3498d218a42d1a49f1e8270af48`, no
+  application implementation, and no prior submitted reviews.
+- Submitted GitHub review **APPROVE** for this tests-and-docs scope only:
+  https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/5#pullrequestreview-6017260315
+  (`2026-11-23T06:11:54Z`). GitHub started a safety-review rerun after the review;
+  it was pending at the last status check. No merge was performed.
+
+### Decision
+
+**APPROVE — tests-and-docs scope only.** The previous functional test-design
+findings are resolved in this head. The two CI failures are explained by the
+deliberately unimplemented C module/CLI, with the rest of the offline suite
+passing. This approval is not a claim that CI is green or the PR is merge-ready;
+the required suite must pass after implementation. The pending candidate contract
+values and NFR-C target remain subject to team confirmation. This review does not
+approve application implementation or merge.
+
 ## FR-A / NFR-A 同日双标的比较 PR（draft）
 
 - **Repository:** `sui-feng-cb/CS5351-TradingAgents`
-- **PR:** 待开 draft；编号/URL 待填
+- **PR:** #7 — https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/7
 - **Reviewer:** 待填（必须为非作者；不得自批）
-- **Base:** 待填
-- **Head:** 待填
+- **Base:** main
+- **Head:** 40bbe2cd8fd2799d629c1a4acf88dfa5c57bb62a
 - **Date:** 2026-11-23
 - **Scope:** FR-A、NFR-A、INV-A；A-IC-001（2026-11-23 冻结）
 - **Files:** `src/tradingagents/enhancements/comparison.py`、
