@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "run_id": "a1b2c3d4-0000-4000-8000-9f8e7d6c5b4a",
+  "ticker": "0700.HK",
+  "asset_type": "stock",
+  "trade_date": "2026-11-20",
+  "as_of": "2026-11-20",
+  "started_at": "2026-11-20T15:00:00Z",
+  "finished_at": "2026-11-20T15:00:42Z",
+  "code_version": "0.7.1",
+  "analysts": ["market"],
+  "models": {
+    "deep": {"provider": "deepseek", "model": "deepseek-reasoner"},
+    "quick": {"provider": "deepseek", "model": "deepseek-chat"}
+  },
+  "configured_data_vendors": {
+    "core_stock_apis": "yfinance",
+    "news_data": "yfinance"
+  },
+  "status": "failed",
+  "reports": {
+    "complete_report_md": null,
+    "complete_report_html": null
+  },
+  "error": {
+    "code": "no_data",
+    "message": "No market data returned for 0700.HK on 2026-11-20."
+  },
+  "unknown_fields": []
+}
