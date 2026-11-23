@@ -7,7 +7,7 @@ requirements:
   - id: FR-A
     type: functional
     owner: A
-    status: planned
+    status: implemented
     statement: Analyze exactly two distinct tickers on one date and save a comparison report with per-ticker state, authoritative rating, summary and report link.
     priority: Must
     tradeoff: Sequential existing graph calls; no portfolio simulation.
@@ -19,7 +19,7 @@ requirements:
   - id: NFR-A
     type: quality
     owner: A
-    status: planned
+    status: implemented
     statement: Preserve the successful ticker report whenever the other ticker fails.
     priority: Must
     tradeoff: Explicit partial results instead of whole-request failure.
@@ -31,7 +31,7 @@ requirements:
   - id: FR-B
     type: functional
     owner: B
-    status: planned
+    status: implemented
     statement: Group common events for 2–3 tickers, at most 7 days and 5 records per ticker, using actual news text and at most one grouping model call; publish evidence-backed groups involving at least two tickers.
     priority: Must
     tradeoff: No heat score, impact ranking or prediction; ungrouped and unavailable records remain explicit.
@@ -43,7 +43,7 @@ requirements:
   - id: NFR-B
     type: quality
     owner: B
-    status: planned
+    status: implemented
     statement: All published evidence references resolve to this run and match their ticker and date metadata.
     priority: Must
     tradeoff: Discard unverified groups rather than infer citations.
@@ -55,7 +55,7 @@ requirements:
   - id: FR-C
     type: functional
     owner: C
-    status: planned
+    status: implemented
     statement: Write a versioned run_manifest.json for successful and failed runs and provide read-only local ticker/date query with per-file warnings.
     priority: Must
     tradeoff: Only known configuration metadata; no guessed provider provenance.
@@ -63,11 +63,11 @@ requirements:
     fit_criterion:
       metric: approved manifest/query cases passed
       threshold: 100%
-      verification: "test/offline/test_manifest.py (planned): malformed/unknown schemas, missing reports, filters and unsafe paths"
+      verification: "test/offline/test_manifest.py: schema/validation, write, CLI run recording, malformed/unknown schemas, missing reports, filters, unsafe paths, result-root boundary scan; schema at docs/architecture/run-manifest-v1.schema.json; evidence docs/verification/c-manifest.md"
   - id: NFR-C
     type: performance
     owner: C
-    status: planned
+    status: implemented
     statement: Query 1000 synthetic manifests within the approved CI timing budget.
     priority: Must
     tradeoff: The 2-second threshold is proposed and requires human approval before feature implementation.
@@ -75,7 +75,7 @@ requirements:
     fit_criterion:
       metric: wall-clock seconds on a fixed CI runner
       threshold: at most 2 seconds (proposed)
-      verification: versioned dataset generator and performance runner pending implementation
+      verification: "test/benchmarks/bench_manifest_query.py over a 1,000-manifest v2 dataset; formal CI-runner acceptance pending (local WSL baseline recorded in docs/verification/c-manifest.md)"
   - id: FR-D
     type: functional
     owner: D

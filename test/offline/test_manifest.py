@@ -17,6 +17,8 @@ locked by executable assertions here.
 from __future__ import annotations
 
 import json
+import os
+import sys
 import uuid
 from pathlib import Path
 
@@ -549,7 +551,7 @@ def _run_failing_cli(tmp_path, monkeypatch, *, run_config=None, crash_message=No
 
 
 def _run_successful_cli(tmp_path, monkeypatch, *, results_dir, ticker="NVDA",
-                        analysis_date="2026-01-10"):
+                        analysis_date="2026-01-10", asset_type="stock"):
     """Drive the real ``cli.run.run_analysis`` to completion with saving off.
 
     Uses the same ``results_dir``/ticker/date a caller passes, so two calls
@@ -569,7 +571,7 @@ def _run_successful_cli(tmp_path, monkeypatch, *, results_dir, ticker="NVDA",
     monkeypatch.setattr(cli_run, "Live", _NullLive)
     monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
         "ticker": ticker, "analysis_date": analysis_date,
-        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+        "analysts": [AnalystType.MARKET], "asset_type": asset_type,
     })
     monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: config)
     monkeypatch.setattr(cli_run.typer, "prompt", lambda *a, **k: "N")
@@ -656,6 +658,209 @@ def test_cli_saved_report_path_is_what_manifest_records(tmp_path, monkeypatch):
     resolved = (results_dir / recorded).resolve()
     assert resolved == saved_path.resolve()
     assert not Path(recorded).is_absolute()
+
+
+@pytest.mark.unit
+def test_cli_success_manifest_records_crypto_asset_type(tmp_path, monkeypatch):
+    results_dir = _run_successful_cli(
+        tmp_path, monkeypatch, results_dir=tmp_path / "results",
+        ticker="BTC", analysis_date="2026-01-10", asset_type="crypto")
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    written = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert written["asset_type"] == "crypto"
+
+
+@pytest.mark.unit
+def test_cli_failure_manifest_records_crypto_asset_type(tmp_path, monkeypatch):
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    graph = _FailingGraph()
+    results_dir = tmp_path / "results"
+    config = {"data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)}
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", lambda *a, **k: graph)
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": "BTC", "analysis_date": "2026-01-10",
+        "analysts": [AnalystType.MARKET], "asset_type": "crypto",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: config)
+    monkeypatch.setattr(cli_run.typer, "prompt", lambda *a, **k: "N")
+
+    with pytest.raises(RuntimeError):
+        cli_run.run_analysis()
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    written = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert written["asset_type"] == "crypto"
+    assert written["status"] == "failed"
+
+
+@pytest.mark.unit
+def test_cli_save_then_show_still_displays_and_records_report(tmp_path, monkeypatch):
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    shown = []
+    graph = _SavingSuccessGraph()
+    results_dir = tmp_path / "results"
+    graph.config_results_dir = str(results_dir)
+    config = {"data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)}
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", lambda *a, **k: graph)
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "display_complete_report", lambda state: shown.append(state))
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": "NVDA", "analysis_date": "2026-01-10",
+        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: config)
+
+    def _no_prompt(*a, **k):
+        raise AssertionError("save/show flags were supplied, so run_analysis must not prompt")
+
+    monkeypatch.setattr(cli_run.typer, "prompt", _no_prompt)
+
+    cli_run.run_analysis(flags={"save": True, "show": True, "html": False})
+
+    # Save completed, yet the show step still ran afterwards.
+    assert graph.saved_path is not None and graph.saved_path.exists()
+    assert len(shown) == 1
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    written = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert written["status"] == "succeeded"
+    assert written["reports"]["complete_report_md"] is not None
+
+
+@pytest.mark.unit
+def test_cli_graph_construction_failure_still_records_and_reraises(tmp_path, monkeypatch):
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    sentinel = RuntimeError("graph constructor boom SECRET")
+
+    def _boom_constructor(*a, **k):
+        raise sentinel
+
+    results_dir = tmp_path / "results"
+    config = {"data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)}
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", _boom_constructor)
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": "NVDA", "analysis_date": "2026-01-10",
+        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: config)
+    monkeypatch.setattr(cli_run.typer, "prompt", lambda *a, **k: "N")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        cli_run.run_analysis()
+    assert excinfo.value is sentinel  # the original exception is preserved
+
+    manifests = list(results_dir.rglob("run_manifest.json"))
+    assert len(manifests) == 1
+    written = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert written["status"] == "failed"
+    # The original exception text never reaches the manifest.
+    assert "graph constructor boom" not in manifests[0].read_text(encoding="utf-8")
+
+
+def _make_dir_symlink(link: Path, target: Path) -> None:
+    """Create a directory symlink, skipping only native-Windows privilege limits.
+
+    On native Windows without the create-symlink privilege, ``os.symlink`` raises
+    ``OSError`` with ``WinError 1314``; there is no real link to test, so the
+    case is skipped. WSL and CI create the real link and verify it.
+    """
+
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("native Windows lacks symlink privilege (WinError 1314)")
+        raise
+
+
+def _prepare_symlinked_runs(tmp_path):
+    """Make ``results/NVDA/2026-01-10/runs`` a symlink to a dir outside the root."""
+
+    results_dir = tmp_path / "results"
+    run_parent = results_dir / "NVDA" / "2026-01-10"
+    run_parent.mkdir(parents=True)
+    outside_runs = tmp_path / "outside_runs"
+    outside_runs.mkdir()
+    _make_dir_symlink(run_parent / "runs", outside_runs)
+    return results_dir, outside_runs
+
+
+@pytest.mark.unit
+def test_cli_refuses_manifest_write_when_runs_symlinks_outside_root(tmp_path, monkeypatch):
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    results_dir, outside_runs = _prepare_symlinked_runs(tmp_path)
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph", lambda *a, **k: _SuccessGraph())
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": "NVDA", "analysis_date": "2026-01-10",
+        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: {
+        "data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)})
+    monkeypatch.setattr(cli_run.typer, "prompt", lambda *a, **k: "N")
+
+    from tradingagents.enhancements.manifest import ManifestError
+
+    with pytest.raises(ManifestError):
+        cli_run.run_analysis()
+
+    # Nothing was written outside the root (no attempt dir, no manifest).
+    assert list(outside_runs.rglob("run_manifest.json")) == []
+    assert list(outside_runs.iterdir()) == []
+
+
+@pytest.mark.unit
+def test_cli_failed_analysis_preserved_when_manifest_write_refused(tmp_path, monkeypatch):
+    import cli.run as cli_run
+    from cli.models import AnalystType
+
+    results_dir, outside_runs = _prepare_symlinked_runs(tmp_path)
+    sentinel = RuntimeError("stream boom preserved")
+    monkeypatch.setattr(cli_run, "TradingAgentsGraph",
+                        lambda *a, **k: _FailingGraph(str(sentinel)))
+    monkeypatch.setattr(cli_run, "message_buffer", _FakeBuffer())
+    monkeypatch.setattr(cli_run, "create_layout", lambda: None)
+    monkeypatch.setattr(cli_run, "update_display", lambda *a, **k: None)
+    monkeypatch.setattr(cli_run, "Live", _NullLive)
+    monkeypatch.setattr(cli_run, "get_user_selections", lambda flags=None: {
+        "ticker": "NVDA", "analysis_date": "2026-01-10",
+        "analysts": [AnalystType.MARKET], "asset_type": "stock",
+    })
+    monkeypatch.setattr(cli_run, "_build_run_config", lambda selections, checkpoint: {
+        "data_cache_dir": str(tmp_path / "cache"), "results_dir": str(results_dir)})
+    monkeypatch.setattr(cli_run.typer, "prompt", lambda *a, **k: "N")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        cli_run.run_analysis()
+    assert excinfo.value is not None and "stream boom preserved" in str(excinfo.value)
+    # The refused write left nothing outside the root.
+    assert list(outside_runs.rglob("run_manifest.json")) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -815,6 +1020,185 @@ def test_unknown_schema_version_is_skipped_with_warning(tmp_path):
 
     assert [m.ticker for m in outcome.matches] == ["AAPL"]
     assert any("schema" in w.lower() for w in outcome.warnings)
+
+
+@pytest.mark.unit
+def test_missing_manifest_in_recognizable_run_dir_warns_once(tmp_path):
+    module = _manifest_module()
+    # (a) A recognizable run dir with no manifest.
+    empty_run = tmp_path / "AAPL" / "2026-11-20" / "runs" / \
+        "11111111-1111-4111-8111-111111111111"
+    empty_run.mkdir(parents=True)
+    # (b) An old-layout valid manifest, still discovered.
+    legacy = tmp_path / "MSFT" / "2026-11-19"
+    _write_manifest(module, legacy, ticker="MSFT",
+                    trade_date="2026-11-19", as_of="2026-11-19")
+    # (c) Unrelated directories that must not warn.
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "AAPL" / "2026-11-20" / "notes").mkdir()
+
+    outcome = _query(module, tmp_path)
+
+    missing = [w for w in outcome.warnings if "manifest is missing" in w]
+    assert len(missing) == 1
+    assert str(empty_run) in missing[0]
+    # The legacy good record is still returned; unrelated dirs add no warning.
+    assert [m.ticker for m in outcome.matches] == ["MSFT"]
+    assert len(outcome.warnings) == 1
+
+
+@pytest.mark.unit
+def test_unrelated_ticker_like_dirs_without_runs_do_not_warn(tmp_path):
+    module = _manifest_module()
+    # A date dir without a runs/ subdir, and a runs/ dir with a non-UUID child,
+    # are not recognizable attempts and must not warn.
+    (tmp_path / "AAPL" / "2026-11-20").mkdir(parents=True)
+    (tmp_path / "MSFT" / "2026-11-19" / "runs" / "not-a-uuid").mkdir(parents=True)
+    good = tmp_path / "NVDA" / "2026-11-18"
+    _write_manifest(module, good, ticker="NVDA",
+                    trade_date="2026-11-18", as_of="2026-11-18")
+
+    outcome = _query(module, tmp_path)
+
+    assert outcome.warnings == []
+    assert [m.ticker for m in outcome.matches] == ["NVDA"]
+
+
+@pytest.mark.unit
+def test_missing_manifest_scan_skips_unreadable_subdirectory(tmp_path):
+    module = _manifest_module()
+    good = tmp_path / "NVDA" / "2026-11-18"
+    _write_manifest(module, good, ticker="NVDA",
+                    trade_date="2026-11-18", as_of="2026-11-18")
+    # An unreadable branch must not abort the scan or the valid match.
+    locked = tmp_path / "LOCKED" / "2026-11-20" / "runs" / \
+        "22222222-2222-4222-8222-222222222222"
+    locked.mkdir(parents=True)
+    no_access = tmp_path / "LOCKED" / "2026-11-20"
+    no_access.chmod(0o000)
+    try:
+        outcome = _query(module, tmp_path)
+    finally:
+        no_access.chmod(0o755)
+
+    assert [m.ticker for m in outcome.matches] == ["NVDA"]
+
+
+@pytest.mark.unit
+def test_missing_manifest_scan_skips_symlinked_ticker_dir_outside_root(tmp_path):
+    module = _manifest_module()
+    results_root = tmp_path / "root"
+    results_root.mkdir()
+    good = results_root / "NVDA" / "2026-11-18"
+    _write_manifest(module, good, ticker="NVDA",
+                    trade_date="2026-11-18", as_of="2026-11-18")
+    # A ticker dir that is a symlink to an outside dir with a run-shaped, empty tree.
+    outside = tmp_path / "outside"
+    (outside / "2026-11-20" / "runs" / "33333333-3333-4333-8333-333333333333").mkdir(
+        parents=True)
+    _make_dir_symlink(results_root / "EVIL", outside)
+
+    outcome = _query(module, results_root)
+
+    assert [m.ticker for m in outcome.matches] == ["NVDA"]
+    # The symlinked branch is skipped, so its empty run dir did not warn.
+    assert not any("run manifest is missing" in w for w in outcome.warnings)
+
+
+@pytest.mark.unit
+def test_missing_manifest_scan_rejects_impossible_calendar_date(tmp_path):
+    module = _manifest_module()
+    good = tmp_path / "NVDA" / "2026-11-18"
+    _write_manifest(module, good, ticker="NVDA",
+                    trade_date="2026-11-18", as_of="2026-11-18")
+    # 2026-02-31 is not a real date; its empty run dir must not warn.
+    (tmp_path / "AAPL" / "2026-02-31" / "runs" / "44444444-4444-4444-8444-444444444444").mkdir(
+        parents=True)
+
+    outcome = _query(module, tmp_path)
+
+    assert [m.ticker for m in outcome.matches] == ["NVDA"]
+    assert not any("run manifest is missing" in w for w in outcome.warnings)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad_kind", ["json", "huge-int", "schema", "invalid-fields", "non-utf8"])
+def test_bad_manifest_warning_does_not_echo_input_and_good_record_returns(tmp_path, bad_kind):
+    module = _manifest_module()
+    good = tmp_path / "AAPL" / "2026-11-20"
+    _write_manifest(module, good, ticker="AAPL")
+    bad = tmp_path / "MSFT" / "2026-11-20"
+    bad.mkdir(parents=True)
+    marker = "SECRET-ECHO-CANARY"
+    if bad_kind == "json":
+        # Invalid JSON that also embeds a canary string.
+        (bad / "run_manifest.json").write_text('{ "ticker": "' + marker + '" not json',
+                                               encoding="utf-8")
+    elif bad_kind == "huge-int":
+        # A schema_version too large to convert to int triggers a ValueError.
+        (bad / "run_manifest.json").write_text(
+            '{"schema_version": ' + "9" * 5000 + '}', encoding="utf-8")
+    elif bad_kind == "schema":
+        data = json.loads(SUCCESS.read_text(encoding="utf-8"))
+        data.update(ticker="MSFT", schema_version=marker)
+        (bad / "run_manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    elif bad_kind == "invalid-fields":
+        data = json.loads(SUCCESS.read_text(encoding="utf-8"))
+        data.update(ticker=marker, run_id="not-a-uuid")  # invalid UUID
+        (bad / "run_manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    else:  # non-utf8
+        (bad / "run_manifest.json").write_bytes(b"\xff\xfe " + marker.encode())
+
+    outcome = _query(module, tmp_path)
+
+    assert [m.ticker for m in outcome.matches] == ["AAPL"]
+    assert outcome.warnings, "bad record should warn"
+    for warning in outcome.warnings:
+        assert marker not in warning, f"warning echoed input: {warning!r}"
+        assert "999999" not in warning, f"warning echoed schema value: {warning!r}"
+    assert all(str(bad.name) in w or str(bad) in w for w in outcome.warnings)
+
+
+@pytest.mark.unit
+def test_written_manifest_keeps_valid_vendor_chain_and_drops_invalid():
+    module = _manifest_module()
+    config = {
+        "llm_provider": "openai",
+        "deep_think_llm": "gpt-5",
+        "quick_think_llm": "gpt-5-mini",
+        "data_vendors": {
+            "core_stock_apis": "yfinance",
+            "fundamental_data": "sec_edgar,yfinance",      # valid ordered chain
+            "news_data": "https://user:tok@evil.example/x",  # credential URL -> dropped
+            "made_up_category": "yfinance",                  # unknown category -> dropped
+        },
+        "tool_vendors": {
+            "get_balance_sheet": "sec_edgar,yfinance",       # valid tool chain
+            "get_fundamentals": "yfinance,bogus_vendor",     # bogus kept? no -> filtered to yfinance
+            "no_such_tool": "yfinance",                      # unknown tool -> dropped
+        },
+    }
+    record = module.build_record(
+        run_id="3f9a1c2e-8b4d-4e6f-9a0b-1c2d3e4f5a6b",
+        ticker="AAPL", trade_date="2026-11-20",
+        started_at="2026-11-20T14:00:00Z", finished_at="2026-11-20T14:12:30Z",
+        status="succeeded", analysts=["market"], config=config,
+        code_version="0.7.1", reports={"complete_report_md": None, "complete_report_html": None},
+        error=None,
+    )
+    module.validate_manifest(record)
+    vendors = record.data["configured_data_vendors"]
+
+    assert vendors["core_stock_apis"] == "yfinance"
+    assert vendors["fundamental_data"] == "sec_edgar,yfinance"   # order preserved
+    assert vendors["get_balance_sheet"] == "sec_edgar,yfinance"
+    assert vendors["get_fundamentals"] == "yfinance"             # bogus vendor dropped
+    assert "news_data" not in vendors                            # credential URL dropped
+    assert "made_up_category" not in vendors
+    assert "no_such_tool" not in vendors
+    serialized = json.dumps(vendors).lower()
+    assert "://" not in serialized and "tok@" not in serialized
 
 
 # --------------------------------------------------------------------------- #
@@ -1022,3 +1406,50 @@ def test_cli_manifest_query_filters_by_ticker_date_and_reports_bad_json(tmp_path
         cli_main, ["--results-dir", str(tmp_path), "--ticker", "ZZZZ"])
     assert code == 0, out
     assert pairs(payload) == []
+
+
+@pytest.mark.unit
+def test_manifest_query_starts_without_loading_analysis_backtest_or_models(tmp_path):
+    import subprocess
+
+    # Seed one real manifest so the query returns a match.
+    _seed_strlib_manifest(tmp_path, "AAPL", "2026-11-20")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    forbidden = (
+        "tradingagents.graph",
+        "tradingagents.backtest",
+        "langchain_openai",
+        "langchain_core",
+        "tradingagents.dataflows.router",
+        "tradingagents.llm_clients",
+        "cli.run",
+        "cli.display",
+        "openai",
+        "yfinance",
+    )
+    # Run the real CLI in a separate interpreter, then report which forbidden
+    # modules got imported and print the JSON result.
+    prog = (
+        "import json, sys\n"
+        f"sys.path[:0] = [{str(repo_root / 'src')!r}, {str(repo_root)!r}]\n"
+        "from typer.testing import CliRunner\n"
+        "import cli.main as m\n"
+        "r = CliRunner().invoke(m.app, ['manifest','query','--results-dir',"
+        f"{str(tmp_path)!r},'--ticker','AAPL','--json'])\n"
+        "loaded = [f for f in "
+        f"{list(forbidden)!r} if f in sys.modules]\n"
+        "print('RESULT:' + r.stdout.strip())\n"
+        "print('LOADED:' + json.dumps(loaded))\n"
+        "sys.exit(0 if r.exit_code == 0 else 1)\n"
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{repo_root / 'src'}{os.pathsep}{repo_root}"
+    proc = subprocess.run([sys.executable, "-c", prog], capture_output=True, text=True, env=env)
+
+    assert proc.returncode == 0, proc.stderr
+    lines = dict(line.split(":", 1) for line in proc.stdout.splitlines() if ":" in line)
+    payload = json.loads(lines["RESULT"])
+    assert payload["matches"][0]["ticker"] == "AAPL"
+    assert payload["matches"][0]["trade_date"] == "2026-11-20"
+    assert json.loads(lines["LOADED"]) == [], f"query loaded heavy modules: {lines['LOADED']}"

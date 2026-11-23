@@ -1,40 +1,48 @@
 # C manifest and query test plan
 
-Status: tests-and-docs only. The tests and documentation at `677e9f3` passed
-independent review; no C application implementation is claimed. Owner: C.
-Acceptance reviewer: a team member other than C. Three implementation-contract
-items still require team confirmation (CLI JSON structure; failed-run error code
-and message; NFR-C runner and timing method) — see below.
+Status: implemented locally on this branch (FR-C/NFR-C). The C module,
+`manifest query` CLI and CLI run-recording are in place and the C suite is green
+at 47 cases; an independent review of the implementation PR is still pending. The
+tests and documentation at `677e9f3` passed independent review earlier; the PR #5
+20/29 expected-failure counts are kept below as history. Owner: C. Acceptance
+reviewer: a team member other than C. Three implementation-contract items still
+require team confirmation (CLI JSON structure; failed-run error code and message;
+NFR-C runner and timing method) — see below.
 
 ## Trace and scope
 
 - Requirements: FR-C, NFR-C (`docs/req/requirements.yaml:55-78`).
 - Contracts/architecture: `docs/architecture/interface-contracts.md` (C section),
+  `docs/architecture/run-manifest-v1.schema.json`,
   `docs/architecture/trace-matrix.md`, `docs/architecture/adr/001-layout-and-extension-boundaries.md`.
-- Offline acceptance suite: `test/offline/test_manifest.py` (29 cases). Fixtures:
+- Offline acceptance suite: `test/offline/test_manifest.py` (47 cases). Fixtures:
   `test/fixtures/run_manifests/`. Manual timing tool: `test/benchmarks/bench_manifest_query.py`.
 - Review status: the tests and documentation at `677e9f3` passed independent
-  review. Three implementation-contract items remain for team confirmation (CLI
-  JSON structure, failed-run error code and message, NFR-C runner and timing
-  method); the historical baseline of 20 expected-red cases is retained further
-  down, along with the separate integration questions.
+  review; the implementation PR awaits an independent non-C review. Three
+  implementation-contract items remain for team confirmation (CLI JSON
+  structure, failed-run error code and message, NFR-C runner and timing
+  method); the historical baselines (20 and 29 expected-red) are retained
+  further down, along with the separate integration questions.
 - No model API, market API, account input or credential is used. Every test runs
   offline; the query test additionally proves neither analysis nor vendor starts.
 
-## Candidate C public contract (proposal, needs approval)
+## C public interface (implemented)
 
 `tradingagents.enhancements.manifest` provides:
 `ManifestRecord.from_dict`, `validate_manifest`, `write_manifest`,
-`record_cli_run`, `query_manifests`, and a `QueryOutcome` carrying `matches` and
-`warnings`. Storage is one `run_manifest.json` per run directory plus a
-read-only local scan. This is a test-review proposal, not implemented.
+`query_manifests`, and a `QueryOutcome` carrying `matches` and `warnings`. The
+CLI run-recording hooks use the helpers `new_run_id`, `utc_now_iso`,
+`attempt_manifest_path` and `build_record`. Storage is one `run_manifest.json`
+per attempt directory (`<results_root>/<ticker>/<YYYY-MM-DD>/runs/<uuid>/`) plus
+a read-only local scan. The machine-readable schema is
+`docs/architecture/run-manifest-v1.schema.json`.
 
-The CLI `manifest query --json` stdout outer structure is a **candidate contract
-pending human confirmation**: a JSON object with top-level `matches` (each entry
-carrying at least `ticker` and `trade_date`/date) and `warnings` (a list of
-human-readable warning strings). Each match also carries its report paths. The
-CLI filter test parses this shape from stdout; if the team picks a different
-outer structure, that test must be revised before implementation.
+The CLI `manifest query --json` stdout outer structure is **implemented but its
+shape still needs team confirmation**: a JSON object with top-level `matches`
+(each entry carrying at least `ticker` and `trade_date`/date) and `warnings` (a
+list of human-readable warning strings). Each match also carries its report
+paths. The CLI filter test parses this shape from stdout; if the team picks a
+different outer structure, that test and the CLI must be revised together.
 
 ### Frozen v1 contract items (asserted by tests)
 
@@ -54,8 +62,11 @@ outer structure, that test must be revised before implementation.
   never a secret value. The candidate fixed values for a failed CLI analysis run
   are `error.code == "analysis_failed"` and `error.message ==
   "Analysis failed."`; these specific strings are **pending human confirmation**.
-- `reports` paths are relative to the results root; a skipped save is `null` and
-  query succeeds. A declared-but-missing report warns and query continues.
+- `reports` is a required top-level object; its `complete_report_md` and
+  `complete_report_html` subkeys are optional and may be `null`; each present
+  path is relative to the results root, and unknown report keys are rejected. A
+  skipped save is `null` and query succeeds. A declared-but-missing report warns
+  and the record is still returned.
 - Query tolerates a single bad JSON record, unknown `schema_version`, and missing
   declared reports: each warns and the rest are returned unchanged; no report is
   modified or deleted.

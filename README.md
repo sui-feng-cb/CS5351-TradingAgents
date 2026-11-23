@@ -11,8 +11,11 @@ or provide broker execution.
 - Baseline commit: `9fa1196fffbcfd9de5146d2dd2869df84ab99838`
 - Contribution boundary and source mapping: [`docs/baseline.md`](docs/baseline.md)
 - FR-D/NFR-D now have a local team-mode eligibility implementation in the D
-  branch; A–C remain planned. D's local offline regression passes; remote CI and
-  independent safety/integration review remain pending before merge. See
+  branch, and FR-C/NFR-C are implemented locally on the C branch (47 C cases;
+  the implementation PR's independent review is pending, and the
+  reused-custom-report-directory policy is still to confirm). A and B remain
+  planned. Local offline regressions pass; remote CI and independent review
+  remain pending before merge. See
   [`docs/req/requirements.yaml`](docs/req/requirements.yaml) and
   [`docs/architecture/trace-matrix.md`](docs/architecture/trace-matrix.md).
 
@@ -70,6 +73,45 @@ The initial A–D scope and course obligations are in
 and [`docs/reference/module-acceptance.md`](docs/reference/module-acceptance.md).
 Full initialization evidence and remaining gaps are in
 [`docs/verification/initialization.md`](docs/verification/initialization.md).
+
+### Run manifests and local query (FR-C)
+
+Status: implemented locally on this branch (47 C acceptance cases); the
+implementation PR still needs an independent non-C review, and the
+reused-custom-report-directory policy remains to be confirmed.
+
+Every CLI analysis attempt writes one `run_manifest.json` to its own attempt
+directory under the results root:
+
+```
+<results_dir>/<ticker>/<YYYY-MM-DD>/runs/<uuid>/run_manifest.json
+```
+
+A same-day rerun gets a new UUID and its own directory, so both records are
+kept. Report paths inside the manifest are **relative to the results root** (or
+`null` when no report was saved). A read-only query lists runs by ticker and/or
+date:
+
+```
+tradingagents manifest query --results-dir ~/.tradingagents/logs \
+  --ticker NVDA --date 2026-09-23 --json
+```
+
+`--json` prints one object with `matches` (each carrying `ticker`, `trade_date`,
+`status`, `reports`, `manifest_path`) and `warnings` (per-file problems it
+skipped). The query is read-only: it never starts an analysis, backtest or data
+vendor, and never modifies or deletes a report. A declared-but-missing report is
+reported in `warnings` while the record is still returned. The machine-readable
+schema is
+[`docs/architecture/run-manifest-v1.schema.json`](docs/architecture/run-manifest-v1.schema.json)
+and the contract is in
+[`docs/architecture/interface-contracts.md`](docs/architecture/interface-contracts.md).
+
+FR-C is implemented locally on this branch (47 C acceptance cases). Local
+verification and the NFR-C local timing baseline are in
+[`docs/verification/c-manifest.md`](docs/verification/c-manifest.md). The
+implementation PR still needs an independent non-C review, and the
+reused-custom-report-directory policy remains to be confirmed.
 
 ## GitHub and gates
 

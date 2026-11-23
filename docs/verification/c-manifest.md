@@ -1,8 +1,10 @@
-# C manifest tests-and-docs verification
+# C manifest verification
 
-Status: tests-and-docs-only baseline, pending human diff review and independent
-non-C test-plan approval. No C application code, commit, push, PR or merge is
-claimed. Recorded on the project Python 3.13 `.venv`.
+Status: implementation-complete locally on branch `c-manifest-implementation`; the
+C module, the `manifest query` CLI command and the CLI run-recording hooks are
+implemented. An independent review of the implementation PR is still pending;
+remaining plan decisions and formal NFR-C acceptance are pending too. Recorded on
+the project Python 3.13 `.venv`.
 
 ## Environment actually used for this record
 
@@ -20,7 +22,7 @@ retained only to show the same expected-red outcome held before `.venv` existed.
 
 ## Baseline: current checkout
 
-- Branch `C`; baseline commit family: this branch from `main` over
+- Branch `c-manifest-implementation`; baseline commit family: this branch from `main` over
   `9fa1196fffbcfd9de5146d2dd2869df84ab99838` (see `docs/baseline.md`).
 
 ## PR #5 review snapshot (separate from this round)
@@ -30,54 +32,61 @@ passing tests**. That snapshot predates the additional P2 cases added since; it
 is kept as the review record and is NOT this round's measurement. This round's
 actual counts are in the next section.
 
-## Expected C acceptance failure (tests-first) — this round, Python 3.13 `.venv`
+## Current implementation — full local regression (this round, Python 3.13 `.venv`)
 
-Full-repository baseline (see the exact command and totals in "Full baseline"
-below). The C module `tradingagents.enhancements.manifest` and the `manifest
-query` subcommand are intentionally absent, so `test/offline/test_manifest.py`
-is the only file with failures.
-
-```
-$ TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
-29 failed, 1532 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed
-```
-
-All 29 failures are the expected C/CLI reds, in three patterns:
-
-- Real-CLI success/failure cases reach the on-disk `run_manifest.json`
-  assertion (e.g. `test_same_day_rerun_keeps_two_distinct_records`,
-  `test_cli_saved_report_path_is_what_manifest_records`,
-  `test_cli_run_failure_is_recorded_with_a_safe_error_code`): `0 == N` because
-  no manifest was written.
-- CLI query cases fail at `assert code == 0` / `assert result.exit_code == 0`
-  with output `No such command 'manifest'`.
-- Remaining cases fail at the missing-module guard:
-
-```
-E   Failed: C implementation missing: tradingagents.enhancements.manifest
-    (ImportError("cannot import name 'manifest' from 'tradingagents.enhancements'")).
-    Expected until the approved implementation lands.
-```
-
-Collection succeeds (29 collected); each case fails with a self-describing
-message, so the rest of the suite is not blocked. No non-C file failed.
-
-## Full baseline, Ruff, governance — this round
+The C module, `manifest query` CLI and CLI run-recording are implemented, so the
+whole offline suite is green. The PR #5 tests-first baseline above is retained as
+history; it is superseded by this result.
 
 ```
 $ TZ=America/New_York .venv/bin/python -m pytest -q --tb=line --disable-warnings
-29 failed, 1532 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed in 256.04s
+1579 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed in 52.64s
+```
+
+- Skip: optional `langchain_aws` Bedrock dependency. Deselect: live DeepSeek.
+- `test/offline/test_manifest.py`: 47 cases, all passing (schema/validation,
+  write, CLI run recording, query, filters, bad-record tolerance, secrets,
+  unsafe paths, result-root boundary scan, CLI startup regression).
+- Schema `docs/architecture/run-manifest-v1.schema.json` (Draft 2020-12) mirrors
+  `validate_manifest`: both fixed samples validate; an empty `reports: {}` is
+  accepted; an unknown report key and an unknown top-level field are rejected.
+  The two report subkeys are optional/nullable. A declared-but-missing report
+  warns and keeps its record; the reused-custom-report-directory policy remains
+  to be confirmed; the implementation PR still needs an independent non-C review.
+
+## Repo-wide checks — this round
+
+```
 $ .venv/bin/ruff check .
 All checks passed!
 $ .venv/bin/python scripts/check_governance.py
 Registry/schema, course layout and permission synchronization passed
 Basic credential-pattern scan passed (not a complete secret detector)
+$ .venv/bin/python -m mypy scripts/check_governance.py
+Success: no issues found in 1 source file
+$ .tools/uv/uv pip check --python .venv/bin/python
+Checked 102 packages in 541ms
+All installed packages are compatible
 ```
 
-The 29 failures are all `test/offline/test_manifest.py`; the skip is the optional
-`langchain_aws` Bedrock dependency and the deselection is the live DeepSeek test.
+(`.venv` has no bundled `pip`; dependency consistency is checked with
+`uv pip check`, matching the initialization record.)
+
+## CLI startup optimization (this round)
+
+The `manifest query` command no longer imports the analysis graph, backtest,
+model SDKs or vendor routing at start-up: those imports were deferred into the
+commands that use them, a lightweight `cli.console` Console was shared, and the
+`login`/`logout` plan is built from a light literal (still `chatgpt` only). The
+patchable entry points `cli.main.run_analysis` / `run_backtest` / `summarize`
+remain as thin lazy wrappers. Modules imported at start-up dropped from 2651 to
+302. A separate-process regression test asserts the query starts with none of
+those heavy modules loaded.
 
 ## Fixture generator (deterministic)
+
+Recorded in the earlier Python 3.14 environment; the generator is interpreter
+independent and the current `.venv` v2 rebuild is byte-identical.
 
 ```
 $ python3.14 test/fixtures/run_manifests/gen_dataset.py --out <ds1> --count 1000
@@ -94,28 +103,33 @@ Invariant checks over the 1,000 manifests: every non-null `reports` path is
 relative to the results root and resolves to a file the generator wrote, and
 `finished_at` is never earlier than `started_at` (0 problems).
 
-## Timing tool (tool only; real NFR-C conclusion deferred to CI)
+## Timing tool — NFR-C local baseline (this round; formal acceptance pending)
+
+Dataset: 1,000 manifests regenerated with the v2 generator (`gen_dataset.py`,
+seed 20261120) into a fresh WSL temp dir (the earlier `/tmp` dataset had been
+cleaned). Generation ran separately and is excluded from the timings.
 
 ```
-$ PYTHONPATH=src:. python3.14 test/benchmarks/bench_manifest_query.py \
-      --results-dir <ds1> --ticker AAPL
-run 1: exit=1 ... match_ok=False ok=False
-...
-NOTE: <=2.0s per run is a PROPOSED threshold pending team approval.
+$ .venv/bin/python test/benchmarks/bench_manifest_query.py \
+      --results-dir <fresh v2 dir> --count 1000 --ticker AAPL
+run 1: exit=0 elapsed=1.889s expected_matches=137 match_ok=True ok=True
+run 2: exit=0 elapsed=1.837s expected_matches=137 match_ok=True ok=True
+run 3: exit=0 elapsed=1.808s expected_matches=137 match_ok=True ok=True
+slowest=1.889s proposed_budget=2.0s within_proposed=True all_runs_ok=True
 ```
 
-Against the un-implemented `manifest query` command, the tool exits 1 and
-reports captured startup/scan timings; in this environment it additionally hit
-the missing `langchain_core` dependency of the CLI import chain. This is baseline
-tooling evidence, not an NFR-C pass. The real three-process <=2 s result is
-produced by CI after implementation.
+- Three independent CLI processes: **1.889 / 1.837 / 1.808 s**, each matching
+  **137** AAPL records; the script validates the count per run.
+- These are a **local WSL baseline**, not formal NFR-C acceptance. The fixed CI
+  runner, the three-process method and the ≤2.0 s threshold still require team
+  confirmation; formal acceptance is deferred to CI.
 
 The tool refuses to measure a dataset whose manifest count differs from
 `--count` (default 1,000): it prints a clear error and returns exit 2.
 
 ```
-$ python3.14 test/benchmarks/bench_manifest_query.py --results-dir <ds1> --count 999
-ERROR: expected 999 manifests in <ds1>, found 1000. Regenerate the dataset or
+$ .venv/bin/python test/benchmarks/bench_manifest_query.py --results-dir <ds> --count 999
+ERROR: expected 999 manifests in <ds>, found 1000. Regenerate the dataset or
 pass the matching --count before timing.
 ```
 
@@ -133,12 +147,14 @@ not a C result.
 
 ## Pending
 
-- Non-C independent `Test-Plan-Approved` review of the tests-only head.
-- `mypy` and `pip check` on the project Python 3.13 environment (C suite,
-  `ruff`, governance and the full baseline already ran on 3.13 here).
-- NFR-C ≤2 s measurement is still untested; its threshold remains pending
-  approval.
-- Team confirmation of A/Python run-association interface, backtest coverage,
+- Independent non-C review of the implementation PR remains outstanding. (The
+  PR #5 review record above — `64f7bec`, 20 expected failures — is kept as
+  history.)
+- Non-C independent `Test-Plan-Approved` review of any remaining locking
+  decisions.
+- NFR-C: the local WSL baseline is inside the proposed 2 s budget, but formal
+  acceptance depends on the team confirming the fixed CI runner, the
+  three-process method and the ≤2.0 s threshold, then a CI run.
+- Team confirmation of the A/Python run-association interface, backtest coverage,
   reused-custom-path policy, the `analysis_failed` / `Analysis failed.` fixed
-  values, and the CLI `matches`/`warnings` outer structure before any locking
-  assertion is finalized.
+  values, and the CLI `matches`/`warnings` outer structure.
