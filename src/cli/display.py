@@ -6,7 +6,6 @@ from collections import deque
 from time import monotonic
 
 from rich import box
-from rich.console import Console
 from rich.layout import Layout
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -15,12 +14,11 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
+from cli.console import console
 from tradingagents.graph.analyst_execution import (
     ANALYST_NODE_SPECS,
     AnalystExecutionPlan,
 )
-
-console = Console()
 
 
 class MessageBuffer:

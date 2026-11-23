@@ -55,7 +55,7 @@ requirements:
   - id: FR-C
     type: functional
     owner: C
-    status: planned
+    status: implemented
     statement: Write a versioned run_manifest.json for successful and failed runs and provide read-only local ticker/date query with per-file warnings.
     priority: Must
     tradeoff: Only known configuration metadata; no guessed provider provenance.
@@ -63,11 +63,11 @@ requirements:
     fit_criterion:
       metric: approved manifest/query cases passed
       threshold: 100%
-      verification: "test/offline/test_manifest.py (planned): malformed/unknown schemas, missing reports, filters and unsafe paths"
+      verification: "test/offline/test_manifest.py: schema/validation, write, CLI run recording, malformed/unknown schemas, missing reports, filters, unsafe paths, result-root boundary scan; schema at docs/architecture/run-manifest-v1.schema.json; evidence docs/verification/c-manifest.md"
   - id: NFR-C
     type: performance
     owner: C
-    status: planned
+    status: implemented
     statement: Query 1000 synthetic manifests within the approved CI timing budget.
     priority: Must
     tradeoff: The 2-second threshold is proposed and requires human approval before feature implementation.
@@ -75,7 +75,7 @@ requirements:
     fit_criterion:
       metric: wall-clock seconds on a fixed CI runner
       threshold: at most 2 seconds (proposed)
-      verification: versioned dataset generator and performance runner pending implementation
+      verification: "test/benchmarks/bench_manifest_query.py over a 1,000-manifest v2 dataset; formal CI-runner acceptance pending (local WSL baseline recorded in docs/verification/c-manifest.md)"
   - id: FR-D
     type: functional
     owner: D

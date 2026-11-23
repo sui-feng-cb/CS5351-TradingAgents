@@ -454,6 +454,24 @@ entries:
     feature_status: "APPROVE for tests-and-docs review only; previous six findings resolved. Merge readiness awaits green required tests. CLI JSON shape, failure error literals and NFR-C target require team confirmation."
     github_review: "APPROVE submitted at 2026-11-23T06:11:54Z for tests-and-docs scope only: https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/5#pullrequestreview-6017260315. Approval triggered a new safety-review check, pending at last status query. No merge performed."
     transcript_status: "Active-session TUI /export unavailable in tool interface; user must export under transcripts/raw. No transcript synthesized."
+  - id: C-MANIFEST-IMPL-001
+    scope: fr-c-nfr-c-implementation
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: "User authorized implementing the C module, wiring manifest query into the CLI, recording CLI runs, then finishing documents/schema on this branch."
+    human_approval: "C owner authorized implementation and local verification; commit and push explicitly deferred to the user. Implementation PR independent review pending."
+    publication_direction: "No commit/push by the agent; user commits and pushes; implementation review by a non-C reviewer pending."
+    branch: c-manifest-implementation
+    files: [src/tradingagents/enhancements/manifest.py, src/cli/main.py, src/cli/run.py, src/cli/console.py, src/cli/display.py, test/offline/test_manifest.py, test/offline/test_cli_display.py, docs/architecture/run-manifest-v1.schema.json, docs/architecture/interface-contracts.md, docs/architecture/trace-matrix.md, docs/testing/c-manifest-test-plan.md, docs/req/requirements.yaml, docs/verification/c-manifest.md, README.md, docs/ai-use-log.yaml, .opencode/skills/c-manifest-implementation/SKILL.md]
+    reusable_skill: .opencode/skills/c-manifest-implementation/SKILL.md
+    decision_log: "Built validate/write/query core; then startup import diagnosis (2651 modules, ~20s) led to deferring analysis/backtest/model/vendor imports (302 modules) and a lightweight shared Console, bringing CLI query to 1.808-1.889s on 1,000 manifests."
+    validation: docs/verification/c-manifest.md
+    test_result: "C suite 47 passed; full offline suite 1579 passed, 1 skipped, 1 deselected, 100 subtests."
+    nfr_c_status: "Local WSL baseline 1.889/1.837/1.808s, 137 matches each; fixed CI runner, three-process method and <=2s threshold still need team confirmation and a CI run."
+    validation_checks: "ruff check . pass; check_governance.py pass; mypy scripts/check_governance.py pass; uv pip check pass (102 packages)."
+    transcript: transcripts/raw/session-ses_dfc2.md
+    human_annotations: transcripts/annotations/c-manifest-implementation-2026-11-23.md
+    transcript_status: "export-preserved; human-annotations-bound"
   - id: B-EVENTS-IMPL-001
     scope: fr-b-nfr-b-events-implementation
     agent: OpenCode
@@ -481,3 +499,16 @@ entries:
     validation: "test/offline/test_events.py 56 passed；ruff check . 通过。"
     feature_status: "merge_once 统一入口已校验记录日期窗口，未来/过期/缺失/畸形日期均拒绝；新增 3 个负例。"
     transcript_status: "active-session TUI export pending"
+  - id: C-MANIFEST-PR9-FIX-001
+    scope: fr-c-report-save-failure-distinction
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01]
+    user_direction: "组长反馈 PR #9：报告保存失败与主动跳过不可区分；确认复用 v1 error 字段与现有 query warnings 修复。"
+    human_approval: "C 负责人授权修复与本地验证；提交和推送留给用户；实现 PR 独立评审待完成。"
+    branch: c-manifest-implementation
+    files: [src/cli/run.py, src/tradingagents/enhancements/manifest.py, test/offline/test_manifest.py, docs/architecture/interface-contracts.md, docs/architecture/run-manifest-v1.schema.json, docs/architecture/trace-matrix.md, docs/testing/c-manifest-test-plan.md, docs/verification/c-manifest.md, docs/ai-use-log.yaml]
+    decision_log: "_offer_reports 返回含 save_failed 的结果（跳过仍 None）；成功后保存失败保留 status=succeeded、报告路径 null，error=report_save_failed/Report save failed.；查询识别该码输出固定 warning 并保留记录。"
+    validation: docs/verification/c-manifest.md
+    test_result: "原红测 test_manifest.py:815 转绿；定向 5 passed，相关三文件 116 passed；全量离线 1678 passed, 1 skipped, 2 deselected, 100 subtests。"
+    validation_checks: "ruff check . pass; check_governance.py pass; git diff --check clean."
+    transcript_status: "No active-session export bound for this fix yet; to bind on user export."

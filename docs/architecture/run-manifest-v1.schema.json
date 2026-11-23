@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sui-feng-cb/CS5351-TradingAgents/docs/architecture/run-manifest-v1.schema.json",
+  "title": "TradingAgents run manifest v1",
+  "description": "One run_manifest.json per execution attempt (FR-C/NFR-C). Mirrors tradingagents.enhancements.manifest.validate_manifest. Report paths are relative to the results root; results-root containment and on-disk existence are checked at runtime, not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "ticker",
+    "asset_type",
+    "trade_date",
+    "as_of",
+    "started_at",
+    "finished_at",
+    "code_version",
+    "analysts",
+    "models",
+    "configured_data_vendors",
+    "status",
+    "reports",
+    "error",
+    "unknown_fields"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Fresh UUID per execution attempt; same-day reruns each get their own."
+    },
+    "ticker": {"type": "string", "minLength": 1},
+    "asset_type": {"type": "string", "minLength": 1},
+    "trade_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Analysis trading date, YYYY-MM-DD."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date",
+      "description": "As-of trading date, YYYY-MM-DD."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC-aware ISO-8601 timestamp (e.g. ...Z)."
+    },
+    "finished_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "UTC-aware finish; null while a run is still running."
+    },
+    "code_version": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Installed package version when available; null when unknown."
+    },
+    "analysts": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "models": {
+      "type": ["object", "null"],
+      "description": "Per-tier provider/model only; null when unknown. Extra keys (endpoints, keys) are not allowed.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider", "model"],
+        "properties": {
+          "provider": {"type": "string"},
+          "model": {"type": "string"}
+        }
+      }
+    },
+    "configured_data_vendors": {
+      "type": "object",
+      "description": "Configured source vendors (not per-request provenance); keys/tools filtered to known routing, values may be a fallback chain like sec_edgar,yfinance.",
+      "additionalProperties": {"type": "string"}
+    },
+    "status": {
+      "enum": ["running", "succeeded", "failed"],
+      "description": "Analysis result only. A report-save failure after a successful analysis keeps status 'succeeded' and is recorded in error."
+    },
+    "reports": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Report paths relative to the results root; both keys are optional (omitted means not saved) and each value may be null.",
+      "properties": {
+        "complete_report_md": {
+          "type": ["string", "null"],
+          "description": "Path relative to the results root, or null when no report was saved."
+        },
+        "complete_report_html": {
+          "type": ["string", "null"],
+          "description": "Path relative to the results root, or null when not generated."
+        }
+      }
+    },
+    "error": {
+      "type": ["object", "null"],
+      "description": "Fixed error code plus safe text; null when nothing failed or the save was skipped. Records either an analysis failure (analysis_failed) or a post-success report-save failure (report_save_failed, message 'Report save failed.'; report paths are then null). Never contains an exception message or traceback.",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    "unknown_fields": {
+      "type": "array"
+    }
+  }
+}

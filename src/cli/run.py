@@ -27,10 +27,72 @@ from cli.stats_handler import StatsCallbackHandler
 from tradingagents.agents.rating import is_review, run_rating
 from tradingagents.dataflows.symbols import safe_ticker_component
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.enhancements import manifest as run_manifest
 from tradingagents.graph.analyst_execution import (
     build_analyst_execution_plan,
 )
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+
+
+def _code_version() -> str | None:
+    """The installed package version, or ``None`` when it cannot be read."""
+
+    try:
+        import tradingagents
+
+        return tradingagents.__version__
+    except Exception:  # noqa: BLE001 - version is best-effort metadata
+        return None
+
+
+def _relative_report_path(path, results_root) -> str | None:
+    """Return ``path`` relative to ``results_root`` (POSIX), or None if outside it.
+
+    The manifest only records report paths that live under the results root; a
+    custom save target elsewhere is recorded as null rather than leaking an
+    absolute path.
+    """
+
+    if path is None:
+        return None
+    try:
+        resolved = Path(path).resolve()
+        root = Path(results_root).resolve()
+        rel = resolved.relative_to(root)
+    except (ValueError, OSError):
+        return None
+    return rel.as_posix()
+
+
+def _write_run_manifest(*, path, results_root, run_id, ticker, trade_date, started_at,
+                        finished_at, status, analysts, config, reports, error,
+                        asset_type="stock") -> None:
+    """Build and atomically write this attempt's manifest, under the results root.
+
+    The resolved target must stay within ``results_root`` (symlinks included);
+    a symlinked ``runs`` directory pointing outside the root is refused before
+    any directory or temp file is created. Failures here never replace the
+    caller's in-flight exception.
+    """
+
+    target = Path(path)
+    try:
+        resolved_root = Path(results_root).resolve()
+        resolved_target = target.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise run_manifest.ManifestError(
+            "manifest target could not be resolved") from exc
+    if resolved_target != resolved_root and resolved_root not in resolved_target.parents:
+        raise run_manifest.ManifestError(
+            "manifest target escapes the results root; refusing to write")
+
+    record = run_manifest.build_record(
+        run_id=run_id, ticker=ticker, trade_date=trade_date,
+        started_at=started_at, finished_at=finished_at, status=status,
+        analysts=analysts, config=config, code_version=_code_version(),
+        reports=reports, error=error, asset_type=asset_type,
+    )
+    run_manifest.write_manifest(target, record)
 
 
 def _run_directory(config: dict, ticker: str, trade_date: str) -> Path:
@@ -112,6 +174,17 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
 
     config = _build_run_config(selections, checkpoint)
 
+    # This execution attempt's identity and start, stamped before the graph is
+    # built. A same-day rerun gets a new run id and its own manifest directory.
+    run_id = run_manifest.new_run_id()
+    started_at = run_manifest.utc_now_iso()
+    results_root = config["results_dir"]
+    # Build the manifest path from the validated ticker (a path component), the
+    # analysis date and the results root, so an unsafe ticker cannot escape it.
+    manifest_ticker = safe_ticker_component(selections["ticker"])
+    manifest_path = run_manifest.attempt_manifest_path(
+        results_root, manifest_ticker, selections["analysis_date"], run_id)
+
     stats_handler = StatsCallbackHandler()
 
     # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
@@ -119,14 +192,6 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
     selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
     analyst_execution_plan = build_analyst_execution_plan(selected_analyst_keys)
     analyst_wall_time_tracker = AnalystWallTimeTracker(analyst_execution_plan)
-
-    graph = TradingAgentsGraph(
-        selected_analyst_keys,
-        config=config,
-        debug=True,
-        callbacks=[stats_handler],
-        decision_mode=flags.get("decision_mode", "standard"),
-    )
 
     message_buffer.init_for_analysis(selected_analyst_keys)
 
@@ -187,236 +252,284 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
 
     # The alternate screen keeps a layout taller than the window from redrawing
     # by scrolling; the final report prints after this block, on the normal screen.
-    with Live(layout, refresh_per_second=4, screen=True):
-        # Initial display
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-        message_buffer.add_message("System", f"Selected ticker: {selections['ticker']}")
-        if selections["asset_type"] != "stock":
-            message_buffer.add_message("System", f"Detected asset type: {selections['asset_type']}")
-        message_buffer.add_message(
-            "System", f"Analysis date: {selections['analysis_date']}"
+    try:
+        # Graph construction is inside the failure boundary: a constructor that
+        # raises still records a failed attempt, then the error propagates.
+        graph = TradingAgentsGraph(
+            selected_analyst_keys,
+            config=config,
+            debug=True,
+            callbacks=[stats_handler],
+            decision_mode=flags.get("decision_mode", "standard"),
         )
-        message_buffer.add_message(
-            "System",
-            f"Selected analysts: {', '.join(analyst.value for analyst in selections['analysts'])}",
-        )
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
+        with Live(layout, refresh_per_second=4, screen=True):
+            # Initial display
+            update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-        # The analysts start together.
-        for spec in analyst_execution_plan.specs:
-            message_buffer.update_agent_status(spec.agent_node, "in_progress")
-            analyst_wall_time_tracker.mark_started(spec.key)
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
+            message_buffer.add_message("System", f"Selected ticker: {selections['ticker']}")
+            if selections["asset_type"] != "stock":
+                message_buffer.add_message("System", f"Detected asset type: {selections['asset_type']}")
+            message_buffer.add_message(
+                "System", f"Analysis date: {selections['analysis_date']}"
+            )
+            message_buffer.add_message(
+                "System",
+                f"Selected analysts: {', '.join(analyst.value for analyst in selections['analysts'])}",
+            )
+            update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-        spinner_text = (
-            f"Analyzing {selections['ticker']} on {selections['analysis_date']}..."
-        )
-        update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
+            # The analysts start together.
+            for spec in analyst_execution_plan.specs:
+                message_buffer.update_agent_status(spec.agent_node, "in_progress")
+                analyst_wall_time_tracker.mark_started(spec.key)
+            update_display(layout, stats_handler=stats_handler, start_time=start_time)
 
-        # The same initial state propagate() builds, with the resolved
-        # instrument identity; the graph's Memory Log step settles past
-        # decisions and loads their lessons alongside the analysts.
-        init_agent_state = graph.create_run_state(
-            selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
-        )
-        # Pass callbacks to graph config for tool execution tracking
-        # (LLM tracking is handled separately via LLM constructor)
-        args = graph.propagator.get_graph_args(callbacks=[stats_handler])
+            spinner_text = (
+                f"Analyzing {selections['ticker']} on {selections['analysis_date']}..."
+            )
+            update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
 
-        # Recompile with a checkpointer and inject the thread_id so --checkpoint
-        # actually saves and resumes on the CLI path (#1249); a no-op when
-        # checkpointing is disabled. Torn down in the finally below.
-        checkpoint_tid = graph.begin_checkpoint(
-            selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
-        )
-        if checkpoint_tid is not None:
-            args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_tid
-            _announce_checkpoint_state(graph, selections["ticker"], selections["analysis_date"])
-
-        # Stream the analysis. On resume, feed None so LangGraph continues the
-        # interrupted run instead of re-appending the initial state (#1249); the
-        # try/finally tears the checkpointer down even if the stream raises.
-        trace = []
-        try:
-            for messages, chunk in graph.stream_run(graph.checkpoint_input(init_agent_state), **args):
-                for message in messages:
-                    msg_id = getattr(message, "id", None)
-                    if msg_id is not None:
-                        if msg_id in message_buffer._processed_message_ids:
-                            continue
-                        message_buffer._processed_message_ids.add(msg_id)
-
-                    msg_type, content = classify_message_type(message)
-                    if content and content.strip():
-                        message_buffer.add_message(msg_type, content)
-
-                    if hasattr(message, "tool_calls") and message.tool_calls:
-                        for tool_call in message.tool_calls:
-                            if isinstance(tool_call, dict):
-                                message_buffer.add_tool_call(tool_call["name"], tool_call["args"])
-                            else:
-                                message_buffer.add_tool_call(tool_call.name, tool_call.args)
-
-                if chunk is None:   # a step inside an analyst's graph: messages only
-                    update_display(layout, stats_handler=stats_handler, start_time=start_time)
-                    continue
-
-                update_analyst_statuses(
-                    message_buffer,
-                    chunk,
-                    wall_time_tracker=analyst_wall_time_tracker,
-                )
-
-                gate_ready = (
-                    flags.get("decision_mode", "standard") != "team"
-                    or chunk.get("eligibility_checked") is True
-                    or (
-                        chunk.get("final_rating") == "REVIEW"
-                        and bool(chunk.get("eligibility_reason_codes"))
-                        and bool(chunk.get("eligibility_message"))
-                    )
-                )
-
-                # Research Team - Handle Investment Debate State
-                if chunk.get("investment_debate_state"):
-                    debate_state = chunk["investment_debate_state"]
-                    bull_hist = debate_state.get("bull_history", "").strip()
-                    bear_hist = debate_state.get("bear_history", "").strip()
-                    judge = (chunk.get("investment_plan") or "").strip()
-
-                    # Only update status when there's actual content
-                    if bull_hist or bear_hist:
-                        update_research_team_status("in_progress")
-                    if bull_hist:
-                        message_buffer.update_report_section(
-                            "investment_plan", f"### Bull Researcher Analysis\n{bull_hist}"
-                        )
-                    if bear_hist:
-                        message_buffer.update_report_section(
-                            "investment_plan", f"### Bear Researcher Analysis\n{bear_hist}"
-                        )
-                    if judge:
-                        message_buffer.update_report_section(
-                            "investment_plan", f"### Research Manager Decision\n{judge}"
-                        )
-                        update_research_team_status("completed")
-                        message_buffer.update_agent_status("Trader", "in_progress")
-
-                # Trading Team
-                trader_output_ready = (
-                    flags.get("decision_mode", "standard") != "team" or gate_ready
-                )
-                if chunk.get("trader_investment_plan") and trader_output_ready:
-                    message_buffer.update_report_section(
-                        "trader_investment_plan", chunk["trader_investment_plan"]
-                    )
-                    if message_buffer.agent_status.get("Trader") != "completed":
-                        message_buffer.update_agent_status("Trader", "completed")
-                        message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-
-                # Risk Management Team - Handle Risk Debate State
-                if chunk.get("risk_debate_state"):
-                    risk_state = chunk["risk_debate_state"]
-                    agg_hist = risk_state.get("aggressive_history", "").strip()
-                    con_hist = risk_state.get("conservative_history", "").strip()
-                    neu_hist = risk_state.get("neutral_history", "").strip()
-                    judge = (chunk.get("final_trade_decision") or "").strip()
-
-                    if agg_hist:
-                        if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
-                            message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
-                        message_buffer.update_report_section(
-                            "final_trade_decision", f"### Aggressive Analyst Analysis\n{agg_hist}"
-                        )
-                    if con_hist:
-                        if message_buffer.agent_status.get("Conservative Analyst") != "completed":
-                            message_buffer.update_agent_status("Conservative Analyst", "in_progress")
-                        message_buffer.update_report_section(
-                            "final_trade_decision", f"### Conservative Analyst Analysis\n{con_hist}"
-                        )
-                    if neu_hist:
-                        if message_buffer.agent_status.get("Neutral Analyst") != "completed":
-                            message_buffer.update_agent_status("Neutral Analyst", "in_progress")
-                        message_buffer.update_report_section(
-                            "final_trade_decision", f"### Neutral Analyst Analysis\n{neu_hist}"
-                        )
-                    if judge and gate_ready and message_buffer.agent_status.get("Portfolio Manager") != "completed":
-                        message_buffer.update_agent_status("Portfolio Manager", "in_progress")
-                        message_buffer.update_report_section(
-                            "final_trade_decision", f"### Portfolio Manager Decision\n{judge}"
-                        )
-                        message_buffer.update_agent_status("Aggressive Analyst", "completed")
-                        message_buffer.update_agent_status("Conservative Analyst", "completed")
-                        message_buffer.update_agent_status("Neutral Analyst", "completed")
-                        message_buffer.update_agent_status("Portfolio Manager", "completed")
-
-                update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-                trace_chunk = chunk
-                if flags.get("decision_mode", "standard") == "team" and not gate_ready:
-                    trace_chunk = dict(chunk)
-                    for key in (
-                        "final_rating", "final_trade_decision",
-                        "candidate_final_rating", "candidate_final_trade_decision",
-                    ):
-                        trace_chunk.pop(key, None)
-                trace.append(trace_chunk)
-
-            # Streamed chunks are per-node deltas, not full state. Merge them
-            # so every report field populated across the run is present.
-            final_state = {}
-            for chunk in trace:
-                final_state.update(chunk)
-
-            # Clean run: log the decision, then drop this run's checkpoint so a
-            # later run starts fresh. A mid-stream failure skips both, keeping
-            # the checkpoint for resume.
-            graph.record_decision(selections["ticker"], selections["analysis_date"], final_state)
-            graph.clear_checkpoint_on_success(
+            # The same initial state propagate() builds, with the resolved
+            # instrument identity; the graph's Memory Log step settles past
+            # decisions and loads their lessons alongside the analysts.
+            init_agent_state = graph.create_run_state(
                 selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
             )
-        finally:
-            # Always restore the plain uncheckpointed graph, even on failure.
-            graph.end_checkpoint()
+            # Pass callbacks to graph config for tool execution tracking
+            # (LLM tracking is handled separately via LLM constructor)
+            args = graph.propagator.get_graph_args(callbacks=[stats_handler])
 
-        for agent in message_buffer.agent_status:
-            message_buffer.update_agent_status(agent, "completed")
-
-        message_buffer.add_message(
-            "System", f"Completed analysis for {selections['analysis_date']}"
-        )
-        message_buffer.add_message("System", analyst_wall_time_tracker.format_summary())
-
-        for section in message_buffer.report_sections:
-            if section in final_state:
-                message_buffer.update_report_section(section, final_state[section])
-
-        update_display(layout, stats_handler=stats_handler, start_time=start_time)
-
-    # Post-analysis prompts (outside Live context for clean interaction)
-    console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
-
-    # A decision nobody can read is not a position. Say so here rather than
-    # leaving the run to look like a normal result.
-    if is_review(run_rating(final_state)):
-        if final_state.get("decision_mode") == "team" and final_state.get("eligibility_message"):
-            reasons = ", ".join(final_state.get("eligibility_reason_codes", []))
-            console.print(
-                f"[yellow]REVIEW — {final_state['eligibility_message']}[/yellow]"
-                + (f" [dim]Reason codes: {reasons}[/dim]" if reasons else "")
-                + "\n"
+            # Recompile with a checkpointer and inject the thread_id so --checkpoint
+            # actually saves and resumes on the CLI path (#1249); a no-op when
+            # checkpointing is disabled. Torn down in the finally below.
+            checkpoint_tid = graph.begin_checkpoint(
+                selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
             )
-        else:
-            console.print(
-                "[yellow]No rating could be read from the final decision, so this run "
-                "is recorded for review rather than as a position. Re-run, or read the "
-                "decision text below and judge it yourself.[/yellow]\n"
-            )
-    console.print(f"[dim]{analyst_wall_time_tracker.format_summary()}[/dim]")
+            if checkpoint_tid is not None:
+                args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_tid
+                _announce_checkpoint_state(graph, selections["ticker"], selections["analysis_date"])
 
-    _offer_reports(final_state, graph, selections["ticker"],
-                   save=flags.get("save"), show=flags.get("show"), html=flags.get("html"))
+            # Stream the analysis. On resume, feed None so LangGraph continues the
+            # interrupted run instead of re-appending the initial state (#1249); the
+            # try/finally tears the checkpointer down even if the stream raises.
+            trace = []
+            try:
+                for messages, chunk in graph.stream_run(graph.checkpoint_input(init_agent_state), **args):
+                    for message in messages:
+                        msg_id = getattr(message, "id", None)
+                        if msg_id is not None:
+                            if msg_id in message_buffer._processed_message_ids:
+                                continue
+                            message_buffer._processed_message_ids.add(msg_id)
+
+                        msg_type, content = classify_message_type(message)
+                        if content and content.strip():
+                            message_buffer.add_message(msg_type, content)
+
+                        if hasattr(message, "tool_calls") and message.tool_calls:
+                            for tool_call in message.tool_calls:
+                                if isinstance(tool_call, dict):
+                                    message_buffer.add_tool_call(tool_call["name"], tool_call["args"])
+                                else:
+                                    message_buffer.add_tool_call(tool_call.name, tool_call.args)
+
+                    if chunk is None:   # a step inside an analyst's graph: messages only
+                        update_display(layout, stats_handler=stats_handler, start_time=start_time)
+                        continue
+
+                    update_analyst_statuses(
+                        message_buffer,
+                        chunk,
+                        wall_time_tracker=analyst_wall_time_tracker,
+                    )
+
+                    gate_ready = (
+                        flags.get("decision_mode", "standard") != "team"
+                        or chunk.get("eligibility_checked") is True
+                        or (
+                            chunk.get("final_rating") == "REVIEW"
+                            and bool(chunk.get("eligibility_reason_codes"))
+                            and bool(chunk.get("eligibility_message"))
+                        )
+                    )
+
+                    # Research Team - Handle Investment Debate State
+                    if chunk.get("investment_debate_state"):
+                        debate_state = chunk["investment_debate_state"]
+                        bull_hist = debate_state.get("bull_history", "").strip()
+                        bear_hist = debate_state.get("bear_history", "").strip()
+                        judge = (chunk.get("investment_plan") or "").strip()
+
+                        # Only update status when there's actual content
+                        if bull_hist or bear_hist:
+                            update_research_team_status("in_progress")
+                        if bull_hist:
+                            message_buffer.update_report_section(
+                                "investment_plan", f"### Bull Researcher Analysis\n{bull_hist}"
+                            )
+                        if bear_hist:
+                            message_buffer.update_report_section(
+                                "investment_plan", f"### Bear Researcher Analysis\n{bear_hist}"
+                            )
+                        if judge:
+                            message_buffer.update_report_section(
+                                "investment_plan", f"### Research Manager Decision\n{judge}"
+                            )
+                            update_research_team_status("completed")
+                            message_buffer.update_agent_status("Trader", "in_progress")
+
+                    # Trading Team
+                    trader_output_ready = (
+                        flags.get("decision_mode", "standard") != "team" or gate_ready
+                    )
+                    if chunk.get("trader_investment_plan") and trader_output_ready:
+                        message_buffer.update_report_section(
+                            "trader_investment_plan", chunk["trader_investment_plan"]
+                        )
+                        if message_buffer.agent_status.get("Trader") != "completed":
+                            message_buffer.update_agent_status("Trader", "completed")
+                            message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
+
+                    # Risk Management Team - Handle Risk Debate State
+                    if chunk.get("risk_debate_state"):
+                        risk_state = chunk["risk_debate_state"]
+                        agg_hist = risk_state.get("aggressive_history", "").strip()
+                        con_hist = risk_state.get("conservative_history", "").strip()
+                        neu_hist = risk_state.get("neutral_history", "").strip()
+                        judge = (chunk.get("final_trade_decision") or "").strip()
+
+                        if agg_hist:
+                            if message_buffer.agent_status.get("Aggressive Analyst") != "completed":
+                                message_buffer.update_agent_status("Aggressive Analyst", "in_progress")
+                            message_buffer.update_report_section(
+                                "final_trade_decision", f"### Aggressive Analyst Analysis\n{agg_hist}"
+                            )
+                        if con_hist:
+                            if message_buffer.agent_status.get("Conservative Analyst") != "completed":
+                                message_buffer.update_agent_status("Conservative Analyst", "in_progress")
+                            message_buffer.update_report_section(
+                                "final_trade_decision", f"### Conservative Analyst Analysis\n{con_hist}"
+                            )
+                        if neu_hist:
+                            if message_buffer.agent_status.get("Neutral Analyst") != "completed":
+                                message_buffer.update_agent_status("Neutral Analyst", "in_progress")
+                            message_buffer.update_report_section(
+                                "final_trade_decision", f"### Neutral Analyst Analysis\n{neu_hist}"
+                            )
+                        if judge and gate_ready and message_buffer.agent_status.get("Portfolio Manager") != "completed":
+                            message_buffer.update_agent_status("Portfolio Manager", "in_progress")
+                            message_buffer.update_report_section(
+                                "final_trade_decision", f"### Portfolio Manager Decision\n{judge}"
+                            )
+                            message_buffer.update_agent_status("Aggressive Analyst", "completed")
+                            message_buffer.update_agent_status("Conservative Analyst", "completed")
+                            message_buffer.update_agent_status("Neutral Analyst", "completed")
+                            message_buffer.update_agent_status("Portfolio Manager", "completed")
+
+                    update_display(layout, stats_handler=stats_handler, start_time=start_time)
+
+                    trace_chunk = chunk
+                    if flags.get("decision_mode", "standard") == "team" and not gate_ready:
+                        trace_chunk = dict(chunk)
+                        for key in (
+                            "final_rating", "final_trade_decision",
+                            "candidate_final_rating", "candidate_final_trade_decision",
+                        ):
+                            trace_chunk.pop(key, None)
+                    trace.append(trace_chunk)
+
+                # Streamed chunks are per-node deltas, not full state. Merge them
+                # so every report field populated across the run is present.
+                final_state = {}
+                for chunk in trace:
+                    final_state.update(chunk)
+
+                # Clean run: log the decision, then drop this run's checkpoint so a
+                # later run starts fresh. A mid-stream failure skips both, keeping
+                # the checkpoint for resume.
+                graph.record_decision(selections["ticker"], selections["analysis_date"], final_state)
+                graph.clear_checkpoint_on_success(
+                    selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+                )
+            finally:
+                # Always restore the plain uncheckpointed graph, even on failure.
+                graph.end_checkpoint()
+
+            for agent in message_buffer.agent_status:
+                message_buffer.update_agent_status(agent, "completed")
+
+            message_buffer.add_message(
+                "System", f"Completed analysis for {selections['analysis_date']}"
+            )
+            message_buffer.add_message("System", analyst_wall_time_tracker.format_summary())
+
+            for section in message_buffer.report_sections:
+                if section in final_state:
+                    message_buffer.update_report_section(section, final_state[section])
+
+            update_display(layout, stats_handler=stats_handler, start_time=start_time)
+
+        # Post-analysis prompts (outside Live context for clean interaction)
+        console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
+
+        # A decision nobody can read is not a position. Say so here rather than
+        # leaving the run to look like a normal result.
+        if is_review(run_rating(final_state)):
+            if final_state.get("decision_mode") == "team" and final_state.get("eligibility_message"):
+                reasons = ", ".join(final_state.get("eligibility_reason_codes", []))
+                console.print(
+                    f"[yellow]REVIEW — {final_state['eligibility_message']}[/yellow]"
+                    + (f" [dim]Reason codes: {reasons}[/dim]" if reasons else "")
+                    + "\n"
+                )
+            else:
+                console.print(
+                    "[yellow]No rating could be read from the final decision, so this run "
+                    "is recorded for review rather than as a position. Re-run, or read the "
+                    "decision text below and judge it yourself.[/yellow]\n"
+                )
+        console.print(f"[dim]{analyst_wall_time_tracker.format_summary()}[/dim]")
+
+        save_info = _offer_reports(final_state, graph, selections["ticker"],
+                                   save=flags.get("save"), show=flags.get("show"),
+                                   html=flags.get("html"),
+                                   results_root=results_root, run_id=run_id)
+    except BaseException:
+        # Record the failed attempt without masking the original error: a
+        # manifest-write problem is logged, the analysis exception is re-raised.
+        try:
+            _write_run_manifest(
+                path=manifest_path, results_root=results_root, run_id=run_id,
+                ticker=selections["ticker"], trade_date=selections["analysis_date"],
+                started_at=started_at, finished_at=run_manifest.utc_now_iso(),
+                status="failed", analysts=selected_analyst_keys, config=config,
+                reports={"complete_report_md": None, "complete_report_html": None},
+                error={"code": "analysis_failed", "message": "Analysis failed."},
+                asset_type=selections["asset_type"],
+            )
+        except Exception:  # noqa: BLE001 - never mask the analysis failure
+            console.print("[yellow]Could not write run manifest for this failed attempt.[/yellow]")
+        raise
+
+    # Success: record the report paths actually saved (relative to the root).
+    # A report-save failure keeps status="succeeded" (the analysis succeeded) but
+    # records a fixed error so it is distinguishable from a skipped save.
+    save_failed = bool(save_info and save_info.get("save_failed"))
+    reports = (
+        {"complete_report_md": save_info.get("complete_report_md"),
+         "complete_report_html": save_info.get("complete_report_html")}
+        if save_info else {"complete_report_md": None, "complete_report_html": None}
+    )
+    _write_run_manifest(
+        path=manifest_path, results_root=results_root, run_id=run_id,
+        ticker=selections["ticker"], trade_date=selections["analysis_date"],
+        started_at=started_at, finished_at=run_manifest.utc_now_iso(),
+        status="succeeded", analysts=selected_analyst_keys, config=config,
+        reports=reports,
+        error={"code": "report_save_failed", "message": "Report save failed."}
+        if save_failed else None,
+        asset_type=selections["asset_type"],
+    )
 
 
 def _yes(question: str) -> bool:
@@ -453,21 +566,35 @@ def _open_page(page: Path) -> None:
         console.print(f"  [dim]Could not open a browser; the page is at:[/dim] {page}")
 
 
-def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None):
+def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None,
+                   results_root=None, run_id=None):
     """Save the report tree and show it; ``save``/``show``/``html`` answer the questions when given.
 
     A saved report includes the HTML page unless ``html`` is False. Someone
     answering the save question at the prompt is also asked about the page and
     offered to open it; a run whose flags answer the save question asks neither.
+
+    Returns a save outcome dict when saving was attempted, else ``None`` (the
+    existing contract some callers/stubs rely on). The dict always carries the
+    two manifest report keys ``complete_report_md`` / ``complete_report_html``
+    (path relative to ``results_root`` or ``None``) plus ``save_failed`` (True
+    when ``save_reports`` raised). A skipped save returns ``None`` so the caller
+    records ``error=null``; a failed save records a fixed ``report_save_failed``
+    error without leaking the exception text.
     """
     asked = save is None
     if asked:
         save = typer.prompt("Save report?", default="Y").strip().upper() in ("Y", "YES", "")
+    save_info = None
     if save:
         # Under results_dir, not the working directory: in Docker the working
         # directory is inside the container and the report goes with it, while
         # results_dir is the mounted volume the rest of the run already writes to.
         save_path = graph.default_report_path(ticker)
+        # Distinguish attempts with the same ticker/date: a run-id suffix keeps a
+        # rerun from overwriting the earlier run's default report directory.
+        if run_id:
+            save_path = save_path.with_name(f"{save_path.name}_{run_id}")
         if asked:   # someone at the prompt may pick another folder
             save_path = Path(typer.prompt(
                 "Save path (press Enter for default)", default=str(save_path)
@@ -475,20 +602,37 @@ def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None):
         if html is None:
             html = _yes("Also save it as an HTML page?") if asked else True
         saved = False
+        report_file = None
+        save_failed = False
         try:
             report_file = graph.save_reports(final_state, ticker, save_path, html=html)
             saved = True
             console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
-        except Exception as e:
-            console.print(f"[red]Error saving report: {e}[/red]")
-        if saved and html:
-            page = (save_path / "complete_report.html").resolve()
-            console.print(f"  [dim]HTML report:[/dim] {page.name}")
-            if asked:
-                _open_page(page)
+        except Exception:  # noqa: BLE001 - a save failure must not abort the run
+            # Fixed text only: the exception message is never shown or stored.
+            save_failed = True
+            console.print("[red]Report save failed. The analysis result is still recorded.[/red]")
+        # A save result or failure is recorded, but the show step below still runs.
+        save_info = {"complete_report_md": None, "complete_report_html": None,
+                     "save_failed": save_failed}
+        if saved:
+            md_rel = _relative_report_path(report_file, results_root) if results_root else None
+            page = (save_path / "complete_report.html")
+            html_rel = None
+            if html and page.exists():
+                html_rel = _relative_report_path(page, results_root) if results_root else None
+                console.print(f"  [dim]HTML report:[/dim] {page.name}")
+                if asked:
+                    _open_page(page.resolve())
+            save_info = {"complete_report_md": md_rel, "complete_report_html": html_rel,
+                         "save_failed": False}
 
+    # Showing the report happens whether or not it was saved (and even if saving
+    # failed), matching the pre-existing behavior.
     if show is None:
         show = typer.prompt("\nDisplay full report on screen?", default="Y").strip().upper() in ("Y", "YES", "")
     if show:
         display_complete_report(final_state)
+
+    return save_info
