@@ -222,20 +222,14 @@ __marimo__/
 .env.enterprise
 reports/
 
-# ---- B 模块 / 团队交付补充（追加） ----
-# 课程参考材料与工作草稿（非交付物，不提交）
-_refs/
-
-# 本地工具缓存
-.deepeval/
-
-# 编辑产生的临时备份
-*.bak
-*.bak.*
-
-# 课程源材料与本地辅助脚本（非交付物，不提交）
-docs_example/
-CS5351小组项目要求*.md
-CS5351小组项目A-D模块*.md
-commit_b_module.sh
-commit_b_module.ps1
+# CS5351 local tooling, interpreters, evidence caches and runtime state
+.tools/
+.python/
+.cache/
+.runtime/
+.opencode/node_modules/
+.opencode/package.json
+.opencode/bun.lock*
+*.mp4
+# Complete native session backup stays local until transcript privacy review.
+/transcripts/raw/initialization-session.json

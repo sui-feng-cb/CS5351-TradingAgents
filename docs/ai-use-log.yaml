@@ -1,55 +1,245 @@
-# AI-Use Disclosure Log
-# B 模块（FR-B / NFR-B）coding agent 使用披露
-# 范本：_refs/docs_example/docs/ai-use-log.yaml（E1.2c，每个 PR 必须）
-# 格式：YAML — 机器可读、可版本控制
-
-disclosures:
-  - date: "2026-11-22"
-    pr_id: "N/A（阶段 3，提交前）"
-    task: "创建 test/fixtures/mock_model_outputs.json（合法分组/单一 ticker/无事件/伪造 ID/跨运行 ID/错配 ticker）"
-    agent: "OpenCode coding agent"
-    model: "deepseek-v4-pro"
-    prompt_version: "1.0"
-    human_reviewed: true
-    changes_accepted: true
-    notes: "mock 输出仅用于 offline 测试，不调用真实模型"
-
-  - date: "2026-11-22"
-    pr_id: "N/A（阶段 3，提交前）"
-    task: "实现 test/offline/test_semantic_eval.py：pairwise precision/recall 指标 + 阈值门禁（完美 mock→1.0/1.0；错误 mock→阻断）"
-    agent: "OpenCode coding agent"
-    model: "deepseek-v4-pro"
-    prompt_version: "1.0"
-    human_reviewed: true
-    changes_accepted: true
-    notes: "离线仅验证指标与门禁逻辑；真实模型评估待 live"
-
-  - date: "2026-11-22"
-    pr_id: "N/A（阶段 3，提交前）"
-    task: "实现 test/offline/test_requirements_schema.py：requirements.yaml 对 req-schema.json 的 schema 校验"
-    agent: "OpenCode coding agent"
-    model: "deepseek-v4-pro"
-    prompt_version: "1.0"
-    human_reviewed: true
-    changes_accepted: true
-    notes: "使用 PyYAML + jsonschema；CI step (a) 执行"
-
-  - date: "2026-11-22"
-    pr_id: "N/A（阶段 3，提交前）"
-    task: "扩展 .github/workflows/ci.yml：新增 b-module 作业（schema 校验 + pytest test/offline/ + 语义评估阈值阻断），保留上游 3 个作业"
-    agent: "OpenCode coding agent"
-    model: "deepseek-v4-pro"
-    prompt_version: "1.0"
-    human_reviewed: true
-    changes_accepted: true
-    notes: "未修改上游 test/smoke-install/lint 作业的既有逻辑"
-
-  - date: "2026-11-22"
-    pr_id: "N/A（阶段 3，提交前）"
-    task: "更新 trace-matrix.md、创建 evaluation-logbook.md（记录 model=deepseek-v4-pro、样例 v1、离线 mock 参考 precision/recall）"
-    agent: "OpenCode coding agent"
-    model: "deepseek-v4-pro"
-    prompt_version: "1.0"
-    human_reviewed: true
-    changes_accepted: true
-    notes: "evaluation-logbook 标注为 mock 参考值，真实模型评估待 live"
+schema_version: 1
+entries:
+  - id: GOV-SAME-PR-OPTIONAL-001
+    scope: make-same-pr-test-review-advisory-and-preserve-safety-review-gate
+    agent: OpenCode
+    requirements: [GOV-01, QUA-01, INV-D]
+    user_direction: "用户授权执行已提交的 same-PR 测试评审门禁调整方案。"
+    human_approval: "用户明确授权执行方案；方案区分可选的 same-PR 测试评审与仍需的计划/测试人工批准、独立最终评审及安全评审。"
+    publication_direction: "不提交或推送；已按方案尝试只读查询远端保护设置，GitHub API 返回 HTTP 403，未读取到或修改任何远端配置。"
+    files: [.github/PULL_REQUEST_TEMPLATE.md, .github/workflows/project-governance.yml, .github/workflows/project-pr-reviews.yml, .github/workflows/project-safety-reviews.yml, scripts/check_governance.py, scripts/check_github_test_approvals.py, scripts/check_github_safety_reviews.py, test/offline/test_governance_gates.py, docs/architecture/adr/003-advisory-test-first-review.md, docs/architecture/trace-matrix.md, docs/req/requirements.yaml, docs/testing/test-approval-process.md, docs/testing/d-eligibility-test-plan.md, docs/code-governance/verification-constraints.md, docs/reference/project-requirements.md, docs/verification/github-flow.md, docs/verification/d-eligibility.md, docs/debt-register.md, docs/ai-use-log.yaml, README.md, .opencode/skills/github-flow-test-review/SKILL.md, .opencode/skills/d-eligibility-implementation/SKILL.md, .opencode/skills/pr3-eligibility-fixes/SKILL.md, .opencode/skills/pr2-test-corrections/SKILL.md]
+    transcript_status: "当前完整会话仍需通过 OpenCode TUI /export 导出并由人类注释；不得合成 transcript。"
+    validation: "Python 3.13.18: targeted governance tests 11 passed; full suite 1532 passed, 1 skipped, 1 deselected, 24 warnings, 100 subtests passed; governance, Ruff, mypy, pip check, YAML parsing and git diff --check passed. GitHub branch-protection/ruleset reads returned HTTP 403; remote settings unchanged. Details in docs/verification/github-flow.md."
+    feature_status: "Local implementation and verification complete; remote branch-protection rollout unresolved. No commit or push."
+  - id: D-ELIG-PR3-FIX-002
+    scope: pr3-re-review-markdown-rating-and-pr-link-fixes
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "Apply the recorded re-review fixes, test, and provide manual commit/push commands."
+    reviewed_head: a99b017c7f65e7d0792b0b28dff20a9e136acc73
+    pull_request: 3
+    files: [src/tradingagents/agents/rating.py, src/tradingagents/graph/trading_graph.py, test/offline/test_team_rating.py, test/offline/test_graph_end_to_end.py, docs/architecture/adr/002-deterministic-eligibility-gate.md, docs/testing/d-eligibility-test-plan.md, docs/review-memo.md, docs/verification/d-eligibility.md, .opencode/skills/pr3-markdown-rating-fix/SKILL.md]
+    validation: docs/verification/d-eligibility.md
+    remote_action: "Corrected only the PR #2 URL in the existing PR #3 description; GitHub confirmed the replacement."
+    feature_status: "1528 passed, 1 skipped, 1 deselected and 100 subtests passed in both full local runs; new-head review pending."
+    transcript_status: "Active-session TUI export unavailable through tools; user export and cross-link pending."
+  - id: D-ELIG-PR3-FIX-001
+    scope: pr3-eligibility-review-corrections
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "Read recorded PR #3 review, modify code and test, then stage and provide manual commit/push commands and template PR text."
+    human_approval: "User explicitly requested repairs of all three P1 findings; no independent corrected-head approval is claimed."
+    publication_direction: "Stage intended files only; do not execute commit, push, PR edits or merge."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    reviewed_head: a8d60b660251b83c886bbf00b30ddd75f83bf528
+    files: [src/tradingagents/dataflows/vendors/yahoo/snapshot.py, src/tradingagents/agents/rating.py, src/tradingagents/agents/managers/portfolio_manager.py, src/tradingagents/graph/trading_graph.py, test/offline/test_graph_end_to_end.py, test/offline/test_eligibility_adapter.py, test/offline/test_team_rating.py, docs, Report.md, transcripts/annotations/pr3-eligibility-fixes-2026-11-22.md, .opencode/skills/pr3-eligibility-fixes/SKILL.md]
+    preserved_review_artifacts: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-eligibility-review/SKILL.md]
+    validation: docs/verification/d-eligibility.md
+    human_annotations: transcripts/annotations/pr3-eligibility-fixes-2026-11-22.md
+    transcript_status: "Prior raw exports exist; complete active correction-session TUI /export and exact cross-link remain pending. No transcript synthesized."
+    feature_status: "Three review reproducers and pre-fix checkpoint reuse fixed locally; 1512 passed, 1 skipped, 1 deselected, 100 subtests passed in both full runs; corrected-head CI and independent re-review pending."
+  - id: D-ELIG-IMPL-001
+    scope: d-eligibility-implementation-and-local-verification
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01, GOV-01]
+    user_direction: "User confirmed PR #2 squash merge and updated main/D; approved the implementation blueprint and requested D1–D9 records, completed tests and staging, then manual commit/push commands."
+    human_approval: "Explicit blueprint approval and continuation in the active session; no independent safety, final verification or integration review is claimed."
+    publication_direction: "Stage only after local verification; do not commit or push."
+    files: [src/tradingagents/enhancements, src/tradingagents/graph, src/tradingagents/agents/state.py, src/tradingagents/dataflows/errors.py, src/tradingagents/dataflows/vendors/yahoo, src/tradingagents/reporting.py, src/tradingagents/report_html.py, src/cli, test/offline/test_eligibility_adapter.py, test/offline/test_cli_commands.py, test/offline/test_cli_headless.py, docs, README.md, Report.md, transcripts/annotations/d-implementation-2026-11-22.md, .opencode/skills/d-eligibility-implementation/SKILL.md]
+    fixed_acceptance_contract: "Merged PR #2 test_eligibility.py and test_graph_end_to_end.py unchanged."
+    transcript_status: "Active full-session TUI /export unavailable through tools; user export and cross-link pending."
+    human_annotations: transcripts/annotations/d-implementation-2026-11-22.md
+    validation: docs/verification/d-eligibility.md
+    feature_status: "Implemented locally; 1470 passed, 1 skipped, 1 deselected, 100 subtests passed; remote CI and independent reviews pending."
+  - id: INIT-001
+    scope: repository-initialization
+    agent: OpenCode
+    requirements: [BASE-01, GOV-01, QUA-01]
+    user_direction: Initialize repository and wait for final approval before commit/push.
+    human_approval: user-explicitly-approved-initialization-publication
+    publication_direction: "User message: 批准上传. Commit message: Chore: initialize CS5351-TradingAgents. Target: origin/main."
+    files: [pyproject.toml, src, test, docs, .opencode, scripts, .github]
+    transcript: transcripts/raw/initialization-session.json
+    transcript_status: native-json-snapshot-local-only-pending-final-tui-export-and-annotations
+    validation: docs/verification/initialization.md
+    feature_status: not-implemented
+  - id: FIX-001
+    scope: ci-pytest-import-path
+    agent: OpenCode
+    requirements: [BASE-01, QUA-01]
+    user_direction: Fix the reported CI tests import error without committing.
+    human_approval: user-approved-ci-repair-and-subsequent-commit-push
+    publication_direction: "User subsequently requested: commit然后推送."
+    files: [pyproject.toml, docs/bug-diary.md, docs/verification/initialization.md, docs/ai-use-log.yaml, .opencode/skills/pytest-entrypoint-imports/SKILL.md]
+    transcript: transcripts/raw/initialization-session.json
+    transcript_status: local-native-session-snapshot-pending-final-tui-export
+    validation: docs/verification/initialization.md
+    feature_status: application-features-unchanged
+  - id: GOV-FLOW-001
+    scope: github-flow-test-review-for-modules-a-through-d
+    agent: OpenCode
+    requirements: [GOV-01, QUA-01, FR-D, NFR-D]
+    user_direction: Use ordinary feature-branch GitHub Flow for every module, with no manual test approval registry.
+    human_approval: User approved D design choice 1, then confirmed execution of the shared workflow migration.
+    publication_direction: User applied the legacy registry cleanup and authorized a commit and push to origin/D without rerunning tests.
+    evidence_boundary: This is governance authorization; no D feature test approval or PR review has occurred in this session.
+    files: [scripts, test/offline/test_governance_gates.py, .github, docs/testing, docs/req/requirements.yaml, Report.md]
+    transcript_status: Active OpenCode session requires human TUI export and annotation.
+    validation: docs/verification/github-flow.md
+    feature_status: application-features-unchanged
+  - id: D-ELIG-001
+    scope: d-eligibility-gate-test-first
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, GOV-01]
+    user_direction: User approved the D execution blueprint and then requested development to begin.
+    human_approval: Blueprint approved; the detailed D acceptance-test review is still pending.
+    publication_direction: User explicitly authorized a tests-only commit on local D, a non-force push only to origin/D, and creation of a draft PR for independent test review; no main-branch publication or remote D synchronization.
+    files: [docs/architecture, docs/code-governance/structural-constraints.md, docs/code-governance/verification-constraints.md, docs/req/requirements.yaml, docs/testing/d-eligibility-test-plan.md, docs/verification/d-eligibility.md, Report.md, test/offline/test_eligibility.py, test/offline/test_graph_end_to_end.py]
+    transcript: Active OpenCode session; TUI /export and human annotation pending.
+    transcript_status: not-yet-exported
+    validation: docs/verification/d-eligibility.md
+    feature_status: test-contract-draft-awaiting-independent-review; application-code-not-started
+  - id: REVIEW-PR2-001
+    scope: read-only-review-of-pr-2
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, GOV-01]
+    user_direction: "用gh拉取远端仓库的pr#2，给出review意见，在对话框中输出可复制的markdown文本。"
+    human_approval: review-request-only; no code or remote publication authorized
+    publication_direction: No commit, push, GitHub review submission or merge action performed.
+    files: [.opencode/skills/pr2-review/SKILL.md, docs/ai-use-log.yaml]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 2
+    head_sha: 0448de2b0e7ff1aa06f1ed2a61f91dca292a81db
+    transcript_status: tui-export-unavailable-in-tool-interface
+    validation: .opencode/skills/pr2-review/SKILL.md
+    feature_status: review-completed; merge-blocking-findings-present
+  - id: REVIEW-PR2-002
+    scope: read-only-re-review-of-pr-2-tests-only-corrections
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, GOV-01]
+    user_direction: "PR #2 已按要求修改，未通过的 CI 是因为还没有实际代码实现，目前只是测试先行，再次 review 请求通过。"
+    human_approval: tests-only re-review requested; application implementation remains gated
+    publication_direction: No commit, push, GitHub review submission or merge action performed.
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr2-review/SKILL.md]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 2
+    base_head: 0448de2b0e7ff1aa06f1ed2a61f91dca292a81db
+    head_sha: f4be027ebbc43c3226c63209b743cf7482711556
+    transcript_status: tui-export-unavailable-in-tool-interface
+    validation: docs/review-memo.md
+    feature_status: revised-tests-only-contract-approved; independent-human-github-test-plan-review-still-required
+  - id: D-ELIG-PR2-FIX-001
+    scope: address-pr2-tests-first-findings
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, GOV-01]
+    user_direction: User directed changes to the D acceptance tests based on docs/review-memo.md; report commit/push commands after completion.
+    human_approval: Tests-only corrections requested; application implementation remains gated on independent test-plan approval.
+    publication_direction: No commit, push, GitHub review submission or merge requested in this revision.
+    files: [test/offline/test_eligibility.py, test/offline/test_graph_end_to_end.py, docs/architecture/interface-contracts.md, docs/testing/d-eligibility-test-plan.md, docs/verification/d-eligibility.md, docs/ai-use-log.yaml, Report.md, .opencode/skills/pr2-test-corrections/SKILL.md]
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 2
+    base_head: 0448de2b0e7ff1aa06f1ed2a61f91dca292a81db
+    local_only_artifacts: [.opencode/skills/pr2-test-corrections/SKILL.md]
+    artifact_note: Keep skills out of the tests-only approval commit; current approval validator permits only test/docs/README/Report paths for its tests-only prefix.
+    transcript_status: active-session TUI export pending
+    validation: docs/verification/d-eligibility.md
+    feature_status: tests-revised-locally; 36-expected-acceptance-failures-and-1430-passes; independent-approval-pending; implementation-not-started
+  - id: REVIEW-PR3-001
+    scope: read-only-code-review-of-pr-3-with-local-review-memo
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "Fetch remote PR #3 using gh, exclude the author-approval CI issue from the verdict, and record a copyable review in docs/review-memo.md."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    base_sha: b5e6663c790b244b099051aee46549e1a9e51069
+    head_sha: a8d60b660251b83c886bbf00b30ddd75f83bf528
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-eligibility-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "Changes required after three reproduced behavioral findings. Local regression reported 1470 passed, 1 skipped, 1 deselected and 100 subtests passed."
+    transcript_status: "Active-session TUI export is unavailable in the tool interface. User export and cross-link pending."
+  - id: REVIEW-PR3-002
+    scope: re-review-of-pr-3-eligibility-corrections
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "Re-review the updated PR #3 for approval."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    base_sha: b5e6663c790b244b099051aee46549e1a9e51069
+    previous_head_sha: a8d60b660251b83c886bbf00b30ddd75f83bf528
+    head_sha: a99b017c7f65e7d0792b0b28dff20a9e136acc73
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-eligibility-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "Changes required. The prior reproductions are covered by passing tests. Two Markdown code-block examples still produced Buy and one pending entry each. Local regression reported 1512 passed, 1 skipped, 1 deselected and 100 subtests passed."
+    transcript_status: "Active-session TUI export is unavailable in the tool interface. User export and cross-link pending."
+  - id: D-ELIG-PR3-FIX-003
+    scope: repair-team-rating-paragraph-skipping-and-retry-PR-CI
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "same-PR-reviews先忽略，其他都批准授权"
+    human_approval: User approved the local regression plan, parser fix, verification and CI retry with the existing mirror.
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    head_sha: 29ce124e3096e6ee4972bed0248a0df78e74d77d
+    validation: docs/verification/d-eligibility.md
+    feature_status: Local regression and review complete. The retry passed on the published head. The local correction awaits the user's commit and push.
+    transcript_status: Active-session TUI export pending
+    human_annotations: transcripts/annotations/pr3-inline-rating-fix-2026-11-22.md
+    reusable_skill: .opencode/skills/pr3-inline-rating-fix/SKILL.md
+  - id: REVIEW-PR3-004
+    scope: re-review-of-pr-3-multiline-inline-markdown-rating-fix
+    agent: OpenCode
+    requirements: [FR-D, NFR-D, INV-D, BASE-01]
+    user_direction: "PR #3 updated; review again and approve if resolved."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 3
+    base_sha: b5e6663c790b244b099051aee46549e1a9e51069
+    previous_head_sha: 29ce124e3096e6ee4972bed0248a0df78e74d77d
+    head_sha: 9c53f95fae53ed75a984568a4e0007fd06ed4764
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr3-inline-rating-fix/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "APPROVE for this head after reproducing the corrected inline-code rating cases. Local full suite: 1536 passed, 1 skipped, 1 deselected, 100 subtests passed. Targeted multiline/code selection: 19 passed, 61 deselected."
+    transcript_status: "No active-session export was made. Existing untracked root-level session-ses_dfce.md was left untouched and is not claimed as this review's export."
+  - id: C-MANIFEST-TESTS-001
+    scope: fr-c-nfr-c-tests-and-docs-only-draft
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: Draft reviewable FR-C/NFR-C tests; authorize test/ and docs/ C changes only; hold implementation, commit, push and PR for later approval.
+    human_approval: tests-and-docs-only stage approved by the C owner; independent non-C Test-Plan-Approved review still required.
+    publication_direction: No commit, push, PR or merge in this revision; wait for diff review then team review.
+    files: [test/offline/test_manifest.py, test/fixtures/run_manifests/sample_success.json, test/fixtures/run_manifests/sample_failed.json, test/fixtures/run_manifests/gen_dataset.py, test/benchmarks/bench_manifest_query.py, docs/testing/c-manifest-test-plan.md, docs/architecture/interface-contracts.md, docs/architecture/trace-matrix.md, docs/verification/c-manifest.md, docs/ai-use-log.yaml]
+    transcript: pending final TUI export
+    transcript_status: active-session TUI export pending
+    validation: docs/verification/c-manifest.md
+    feature_status: tests-first; 20-expected-acceptance-failures; generator and timing tool baselined; independent-approval-pending; implementation-not-started
+  - id: REVIEW-PR5-001
+    scope: read-only-review-of-pr-5-c-manifest-tests-and-docs
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: "现在在C分支，C已经提交了pr #5，给出review意见，把review结论写在docs/review-memo.md，并在对话框中输出可复制的markdown文本。"
+    human_approval: review-request-only; no application code, commit, push, GitHub review submission or merge authorized
+    publication_direction: "Updated local review/session artifacts; GitHub metadata and CI logs were queried read-only. No remote mutation performed."
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 5
+    base_sha: ecc2ff48d3575aa8c897b42ce0b50e8d7a51d92f
+    head_sha: 64f7bec36e91b83f976708ff5310966530596010
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr5-manifest-review/SKILL.md]
+    validation: docs/review-memo.md
+    feature_status: "CHANGES REQUIRED; P1 gaps in path containment and CLI read-only tests; P2 gaps in schema negatives, safe error assertions, CLI filter wiring and saved-report integration; NFR-C timing remains deferred"
+    verification: "Python 3.13: full suite 1532 passed, 20 expected C acceptance failures, 1 skipped, 1 deselected, 100 subtests; governance, Ruff, mypy, pip check and git diff --check passed. GitHub PR checks: governance/safety/Ruff/clean-install passed; Python 3.13 test jobs failed on expected absent C implementation."
+    review_export: "Active-session TUI /export is unavailable through the tool interface; user must run /export and link the real export under transcripts/raw. No transcript was synthesized."
+  - id: REVIEW-PR5-002
+    scope: re-review-of-pr-5-c-manifest-test-corrections
+    agent: OpenCode
+    requirements: [FR-C, NFR-C, SEC-01, GOV-01]
+    user_direction: "PR #5 已按要求更新，再次审查，说明两个 CI 失败原因及重要性、总结修改，并申请通过。"
+    repository: sui-feng-cb/CS5351-TradingAgents
+    pull_request: 5
+    previous_head_sha: 64f7bec36e91b83f976708ff5310966530596010
+    head_sha: 677e9f396e9ae3498d218a42d1a49f1e8270af48
+    files: [docs/review-memo.md, docs/ai-use-log.yaml, .opencode/skills/pr5-manifest-review/SKILL.md]
+    validation: docs/review-memo.md
+    ci_summary: "Two test jobs triggered by pull_request and push on the same head; each reports 29 expected C-only failures, 1532 passed, 1 skipped, 1 deselected, 100 subtests. Remaining checks pass. Required test status remains a merge blocker until implementation makes the C tests pass."
+    feature_status: "APPROVE for tests-and-docs review only; previous six findings resolved. Merge readiness awaits green required tests. CLI JSON shape, failure error literals and NFR-C target require team confirmation."
+    github_review: "APPROVE submitted at 2026-11-23T06:11:54Z for tests-and-docs scope only: https://github.com/sui-feng-cb/CS5351-TradingAgents/pull/5#pullrequestreview-6017260315. Approval triggered a new safety-review check, pending at last status query. No merge performed."
+    transcript_status: "Active-session TUI /export unavailable in tool interface; user must export under transcripts/raw. No transcript synthesized."

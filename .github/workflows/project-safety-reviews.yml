@@ -1,0 +1,33 @@
+name: Project safety reviews
+on:
+  pull_request:
+  pull_request_review:
+    types: [submitted, dismissed]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  safety-review:
+    name: safety review
+    runs-on: ubuntu-latest
+    env:
+      PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+      PR_BASE: ${{ github.event.pull_request.base.sha }}
+      PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -e '.[dev]'
+      - name: Check PR changes
+        run: python scripts/check_governance.py --base "$PR_BASE"
+      - name: Verify independent safety review with GitHub
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m scripts.check_github_safety_reviews --base "$PR_BASE" --head "$PR_HEAD"

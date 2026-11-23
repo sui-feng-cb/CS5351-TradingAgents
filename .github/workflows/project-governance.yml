@@ -1,0 +1,23 @@
+name: Project governance
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    env:
+      PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -e '.[dev]'
+      - run: python scripts/check_governance.py
+      - run: python -m mypy scripts/check_governance.py scripts/check_github_safety_reviews.py
+      - run: python -m pip check

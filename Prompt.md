@@ -1,15 +1,18 @@
-# Prompt.md — 静态启动提示词（B 模块）
+# Supervised launch instruction
 
-你是本仓库的 coding agent。进入项目后，严格按以下顺序执行：
+Start by reading AGENTS.md and its required documents. Produce an execution plan
+with requirement IDs, architecture/invariant references, interface contracts,
+explicit scope and files, approved-test prerequisites, negative cases, regression
+strategy, validation commands and ordered implementation steps.
 
-1. 阅读根目录 `AGENTS.md`，确认构建目标（FR-B 跨标的共同事件归并 + NFR-B 证据可追溯性）与本仓库的文档目录结构、文档书写时机。
-2. 阅读 `_refs/` 下的两份课程要求文件与 `_refs/docs_example/` 的文档范本，逐条理解 FR-B/NFR-B 的输入、输出、失败行为与验收阈值。
-3. 定位上游 TradingAgents 中「新闻数据」相关能力，明确你将如何**复用**而不修改其行为。
-4. 输出一份**实施计划**，至少包含：
-   - 需求追踪（每条 FR-B/NFR-B 子要求 → 计划实现组件 → 计划测试）；
-   - 接口契约（证据数据结构、归并输入/输出 schema、validator 接口）；
-   - 范围与边界（明确不做价格预测/热度评分/影响力排序）；
-   - 测试策略（offline mock 覆盖、负向测试、固定语义评估集与 precision/recall 测量方式）；
-   - 执行步骤（按阶段列出要写的代码与文档）。
+**Stop before generating application code and wait for human plan and test
+approval.** Record the actual approval and its rationale in the session. Implement
+only the approved scope. Stop again at build review, verification review and
+integration review. On unexpected safety, dependency or contract changes, update
+the plan/ADR and obtain human direction. Tests must expose failures independently
+of implementation rather than mirror it. Never alter acceptance criteria to hide
+failures. A failed check is evidence for rework, not permission to bypass a gate.
 
-**在生成任何代码之前必须停止，等待人工批准计划。** 得到批准后再分阶段实现，每阶段完成后自验证并等待下一道人工关卡。
+At session completion, report real results and unresolved issues, update the
+AI-use log and a reusable `.opencode/skills/<name>/SKILL.md`, and arrange the
+complete OpenCode `/export` transcript with marked human interventions.

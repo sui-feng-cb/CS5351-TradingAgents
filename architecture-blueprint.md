@@ -1,3 +1,4 @@
-# Architecture Blueprint
+# Architecture blueprint
 
-See [docs/architecture/architecture-blueprint.md](docs/architecture/architecture-blueprint.md).
+The authoritative [architecture blueprint](docs/architecture/architecture-blueprint.md)
+is maintained under `docs/architecture/`.
