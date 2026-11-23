@@ -1,16 +1,23 @@
 # C manifest and query test plan
 
-Status: tests-and-docs only. Independent non-C test-plan approval is pending; no
-C application implementation is claimed. Owner: C. Acceptance reviewer: a team
-member other than C.
+Status: tests-and-docs only. The tests and documentation at `677e9f3` passed
+independent review; no C application implementation is claimed. Owner: C.
+Acceptance reviewer: a team member other than C. Three implementation-contract
+items still require team confirmation (CLI JSON structure; failed-run error code
+and message; NFR-C runner and timing method) — see below.
 
 ## Trace and scope
 
 - Requirements: FR-C, NFR-C (`docs/req/requirements.yaml:55-78`).
 - Contracts/architecture: `docs/architecture/interface-contracts.md` (C section),
   `docs/architecture/trace-matrix.md`, `docs/architecture/adr/001-layout-and-extension-boundaries.md`.
-- Offline acceptance suite: `test/offline/test_manifest.py` (20 cases). Fixtures:
+- Offline acceptance suite: `test/offline/test_manifest.py` (29 cases). Fixtures:
   `test/fixtures/run_manifests/`. Manual timing tool: `test/benchmarks/bench_manifest_query.py`.
+- Review status: the tests and documentation at `677e9f3` passed independent
+  review. Three implementation-contract items remain for team confirmation (CLI
+  JSON structure, failed-run error code and message, NFR-C runner and timing
+  method); the historical baseline of 20 expected-red cases is retained further
+  down, along with the separate integration questions.
 - No model API, market API, account input or credential is used. Every test runs
   offline; the query test additionally proves neither analysis nor vendor starts.
 
@@ -56,7 +63,24 @@ outer structure, that test must be revised before implementation.
 - No secret material (API keys, tokens, passwords, credentials) appears in any
   serialized manifest.
 
-### Team-confirmation items (documented, NOT locked by executable assertions)
+### Review-pending items (team confirmation before implementation)
+
+These three are the implementation-contract items flagged by the `677e9f3`
+review. The tests currently encode candidate values; the team must confirm or
+adjust them before product implementation:
+
+1. **CLI JSON structure.** The `manifest query --json` stdout outer shape
+   (top-level `matches` with `ticker`/date fields, plus `warnings`) is a
+   candidate contract. The CLI filter test parses this shape from stdout.
+2. **Failed-run error code and message.** The candidate fixed values are
+   `error.code == "analysis_failed"` and `error.message == "Analysis failed."`;
+   these specific strings need confirmation.
+3. **NFR-C runner and timing method.** The fixed CI runner (Python 3.13), the
+   three independent CLI-process measurement (including startup, scan,
+   validation and output capture), and the ≤2.0 s per-run threshold are
+   proposed and require confirmation.
+
+### Integration questions (documented, NOT locked by executable assertions)
 
 These depend on decisions still open. They are listed here so the tests do not
 prematurely freeze the public API:
@@ -119,8 +143,7 @@ current project Python 3.13 `.venv`.
 - Timing tool targets `python -m cli.main manifest query ...`; against the
   un-implemented command it exits 1 with captured startup/scan timing (baseline),
   not an NFR-C pass. The real ≤2 s NFR-C measurement is still untested and its
-  threshold remains pending approval.
-- Independent non-C test-plan approval remains pending.
+  runner/timing method and threshold await team confirmation (see NFR-C item 3).
 
 ## NFR-C performance plan (tool only; real conclusion deferred to CI)
 
