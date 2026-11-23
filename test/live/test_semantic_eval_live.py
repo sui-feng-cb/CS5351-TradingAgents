@@ -30,7 +30,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from openai import OpenAI  # noqa: E402
+from openai import OpenAI
+
 
 def _has_real_deepseek_key() -> bool:
     key = os.environ.get("DEEPSEEK_API_KEY", "")

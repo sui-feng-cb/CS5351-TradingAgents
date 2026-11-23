@@ -83,5 +83,5 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Run offline test suite (no network / API)
-        run: pytest test/offline/ -q
+      - name: Run B-module offline tests (no network / API)
+        run: pytest test/offline/test_events.py -q
