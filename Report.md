@@ -1,5 +1,7 @@
 # CS5351 TradingAgents — D6 Process Report
 
+**See Report.md in the same directory in the submitted zip file.**
+
 **Repository:** [sui-feng-cb/CS5351-TradingAgents](https://github.com/sui-feng-cb/CS5351-TradingAgents)
 
 **Upstream baseline:** `9fa1196fffbcfd9de5146d2dd2869df84ab99838`
