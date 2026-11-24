@@ -1,5 +1,7 @@
 # Full session evidence
 
+**See the files in the same directory in the submitted zip file.**
+
 No student names, IDs or five annotated sessions are fabricated at initialization.
 From the repository-root OpenCode TUI use `/export` to save the complete active
 session under `transcripts/raw/`. Preserve the export, then add human annotations

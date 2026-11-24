@@ -126,8 +126,3 @@ still require an independent current-head review and an ADR. The intended `main`
 branch protection policy requires project CI, independent review and the
 safety-review check, with no direct pushes. Remote settings remain unverified;
 their availability depends on the repository plan.
-
-The course code and `demo.mp4` deadline is 2026-11-25 23:59 HKT (UTC+8); submit
-the video separately from the project ZIP. The classroom PPT is due internally
-on 2026-11-30. Do not include API keys in source, history, reports, transcripts,
-slides, video or screenshots.
